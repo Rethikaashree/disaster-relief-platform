@@ -1,0 +1,52 @@
+.navbar{
+    background:#1565c0;
+    color:white;
+    padding:18px 35px;
+
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+
+    position:relative;
+}
+
+.menu{
+    position:relative;
+}
+
+.menu-btn{
+    font-size:34px;
+    color:white;
+    background:none;
+    border:none;
+    cursor:pointer;
+}
+
+.dropdown{
+    position:absolute;
+    top:50px;
+    right:0;
+
+    background:white;
+    width:200px;
+
+    border-radius:10px;
+
+    box-shadow:0 5px 15px rgba(0,0,0,.25);
+
+    overflow:hidden;
+}
+
+.dropdown button{
+    width:100%;
+    border:none;
+    background:white;
+    padding:15px;
+    text-align:left;
+    cursor:pointer;
+    font-size:16px;
+}
+
+.dropdown button:hover{
+    background:#f0f0f0;
+}

@@ -1,0 +1,150 @@
+/* ================================
+   CAMP MANAGEMENT
+================================ */
+
+.camp-management {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 30px;
+  box-sizing: border-box;
+}
+
+.camp-management h2 {
+  color: #123b6d;
+  font-size: 28px;
+  margin-bottom: 20px;
+}
+
+/* ================================
+   ADD CAMP FORM
+================================ */
+
+.camp-form {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  margin-bottom: 35px;
+}
+
+.camp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.camp-form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.camp-form-group label {
+  font-weight: 600;
+  color: #123b6d;
+  margin-bottom: 7px;
+}
+
+.camp-form-group input {
+  padding: 11px 13px;
+  border: 1px solid #c8d5e6;
+  border-radius: 7px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.camp-form-group input:focus {
+  border-color: #1976d2;
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.12);
+}
+
+/* ================================
+   ADD BUTTON
+================================ */
+
+.add-camp-btn {
+  margin-top: 20px;
+  padding: 12px 25px;
+  border: none;
+  border-radius: 7px;
+  background: #1976d2;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-camp-btn:hover {
+  background: #125ca8;
+}
+
+/* ================================
+   CAMP TABLE
+================================ */
+
+.camp-table-container {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  overflow-x: auto;
+}
+
+.camp-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.camp-table th {
+  background: #1976d2;
+  color: white;
+  padding: 13px;
+  text-align: left;
+}
+
+.camp-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e0e6ef;
+}
+
+.camp-table tr:hover {
+  background: #f5f9ff;
+}
+
+/* ================================
+   DELETE BUTTON
+================================ */
+
+.delete-camp-btn {
+  background: #e53935;
+  color: white;
+  border: none;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.delete-camp-btn:hover {
+  background: #c62828;
+}
+
+/* ================================
+   RESPONSIVE
+================================ */
+
+@media (max-width: 700px) {
+  .camp-management {
+    padding: 15px;
+  }
+
+  .camp-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .camp-table-container {
+    overflow-x: auto;
+  }
+}

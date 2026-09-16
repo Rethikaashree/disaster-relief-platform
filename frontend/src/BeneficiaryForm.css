@@ -1,0 +1,270 @@
+/* =========================================================
+   BENEFICIARY PAGE
+   ========================================================= */
+
+.beneficiary-page {
+  min-height: calc(100vh - 90px);
+  width: 100%;
+  padding: 40px 30px 60px;
+  box-sizing: border-box;
+  background: #eef5ff;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+
+/* =========================================================
+   CARD
+   ========================================================= */
+
+.beneficiary-card {
+  width: min(900px, 100%);
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 35px 40px 40px;
+  box-sizing: border-box;
+  box-shadow: 0 15px 45px rgba(30, 70, 120, 0.12);
+  border: 1px solid #e1eaf5;
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.beneficiary-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 30px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #e5edf7;
+}
+
+.header-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 15px;
+  background: #eaf3ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.beneficiary-header h1 {
+  margin: 0 0 6px;
+  color: #1768c4;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.beneficiary-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+
+/* =========================================================
+   FORM
+   ========================================================= */
+
+.beneficiary-form {
+  width: 100%;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #183b63;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccd7e5;
+  border-radius: 11px;
+  padding: 14px 15px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #ffffff;
+  color: #1e293b;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.form-group input,
+.form-group select {
+  height: 50px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 105px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #2585df;
+  box-shadow: 0 0 0 3px rgba(37, 133, 223, 0.12);
+}
+
+
+/* =========================================================
+   AADHAAR
+   ========================================================= */
+
+.aadhaar-row {
+  display: flex;
+  gap: 12px;
+}
+
+.aadhaar-row input {
+  flex: 1;
+}
+
+.verify-btn {
+  height: 50px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 11px;
+  background: #ff9800;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: 0.2s ease;
+}
+
+.verify-btn:hover {
+  background: #ed8b00;
+  transform: translateY(-1px);
+}
+
+.verify-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.verify-btn.verified {
+  background: #16a34a;
+}
+
+.success-text {
+  display: block;
+  margin-top: 7px;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   REGISTER BUTTON
+   ========================================================= */
+
+.register-btn {
+  width: 100%;
+  height: 54px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    #176dcc,
+    #2696ed
+  );
+  color: white;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.register-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(23, 109, 204, 0.25);
+}
+
+.register-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 700px) {
+
+  .beneficiary-page {
+    padding: 20px 14px 40px;
+  }
+
+  .beneficiary-card {
+    padding: 25px 20px 30px;
+    border-radius: 15px;
+  }
+
+  .beneficiary-header {
+    align-items: flex-start;
+  }
+
+  .beneficiary-header h1 {
+    font-size: 23px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .aadhaar-row {
+    flex-direction: column;
+  }
+
+  .verify-btn {
+    width: 100%;
+  }
+}
+
+
+/* =========================================================
+   SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 420px) {
+
+  .beneficiary-header {
+    flex-direction: column;
+  }
+
+  .beneficiary-header h1 {
+    font-size: 21px;
+  }
+
+  .beneficiary-card {
+    padding: 20px 16px 25px;
+  }
+}

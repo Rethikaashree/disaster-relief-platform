@@ -1,0 +1,588 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #eef5ff;
+}
+
+/* ================================
+   LOGIN MAIN CONTAINER
+================================ */
+
+.login-container {
+  width: min(1100px, 94vw);
+  min-height: 620px;
+  height: 680px;
+
+  margin: auto;
+
+  display: flex;
+  overflow: hidden;
+
+  border-radius: 26px;
+
+  box-shadow: 0 25px 60px rgba(0, 60, 130, 0.22);
+
+  background: #4a98df;
+}
+
+/* ================================
+   LEFT IMAGE
+================================ */
+
+.login-left {
+  width: 58%;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+
+  object-fit: cover;
+  object-position: center;
+}
+
+.login-left::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    to top,
+    rgba(0, 15, 40, 0.85),
+    rgba(0, 15, 40, 0.05) 65%
+  );
+}
+
+/* ================================
+   IMAGE TEXT
+================================ */
+
+.image-overlay {
+  position: absolute;
+
+  left: 32px;
+  bottom: 28px;
+
+  z-index: 2;
+
+  color: white;
+
+  max-width: 550px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  font-size: 21px;
+  font-weight: 800;
+
+  margin-bottom: 10px;
+}
+
+.image-overlay h2 {
+  font-size: 29px;
+  font-weight: 800;
+
+  margin-bottom: 6px;
+}
+
+.image-overlay p {
+  font-size: 14px;
+  line-height: 1.5;
+
+  max-width: 500px;
+
+  margin-bottom: 18px;
+}
+
+/* ================================
+   FEATURE BOX
+================================ */
+
+.feature-box {
+  display: flex;
+
+  width: fit-content;
+
+  background: rgba(5, 32, 65, 0.82);
+
+  border: 1px solid rgba(255,255,255,.3);
+
+  border-radius: 12px;
+
+  overflow: hidden;
+}
+
+.feature-box > div {
+  width: 95px;
+
+  padding: 10px 8px;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 5px;
+
+  border-right: 1px solid rgba(255,255,255,.25);
+}
+
+.feature-box > div:last-child {
+  border-right: none;
+}
+
+.feature-box span {
+  font-size: 18px;
+}
+
+.feature-box small {
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* ================================
+   RIGHT SIDE
+================================ */
+
+.login-right {
+  width: 42%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 22px;
+
+  background: linear-gradient(
+    135deg,
+    #4598df,
+    #378bd4
+  );
+}
+
+/* ================================
+   LOGIN CARD
+================================ */
+
+.login-card {
+  width: 100%;
+  max-width: 390px;
+
+  padding: 25px 28px;
+
+  border-radius: 20px;
+
+  background: rgba(255,255,255,.12);
+
+  border: 1px solid rgba(255,255,255,.35);
+
+  backdrop-filter: blur(15px);
+
+  color: white;
+
+  box-shadow: 0 15px 35px rgba(0,0,0,.08);
+}
+
+/* ================================
+   LOGO
+================================ */
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+
+  margin: 0 auto 8px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  border-radius: 50%;
+
+  background: rgba(255,255,255,.16);
+
+  font-size: 24px;
+}
+
+/* ================================
+   TITLE
+================================ */
+
+.login-card h1 {
+  text-align: center;
+
+  font-size: 27px;
+  font-weight: 800;
+
+  line-height: 1.2;
+
+  margin-bottom: 4px;
+}
+
+.login-card h3 {
+  text-align: center;
+
+  font-size: 15px;
+
+  margin-bottom: 8px;
+}
+
+.login-text {
+  text-align: center;
+
+  font-size: 12px;
+
+  margin-bottom: 22px;
+
+  opacity: .95;
+}
+
+/* ================================
+   LABELS
+================================ */
+
+.login-card form > label {
+  display: block;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  margin-bottom: 6px;
+}
+
+/* ================================
+   INPUT
+================================ */
+
+.input-box {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+
+  height: 43px;
+
+  background: #f5f8ff;
+
+  border-radius: 10px;
+
+  margin-bottom: 14px;
+}
+
+.input-icon {
+  padding-left: 12px;
+
+  font-size: 13px;
+}
+
+.input-box input {
+  width: 100%;
+  height: 100%;
+
+  border: none;
+  outline: none;
+
+  background: transparent;
+
+  padding: 0 38px 0 10px;
+
+  font-size: 12px;
+
+  color: #333;
+}
+
+.input-box input::placeholder {
+  color: #8c98aa;
+}
+
+/* ================================
+   EYE
+================================ */
+
+.eye {
+  position: absolute;
+
+  right: 12px;
+
+  cursor: pointer;
+
+  color: #68758a;
+
+  font-size: 14px;
+}
+
+/* ================================
+   OPTIONS
+================================ */
+
+.login-options {
+  display: flex;
+
+  justify-content: space-between;
+  align-items: center;
+
+  margin: 4px 0 17px;
+
+  font-size: 11px;
+}
+
+.remember {
+  display: flex !important;
+
+  align-items: center;
+
+  gap: 5px;
+
+  margin: 0 !important;
+}
+
+.remember input {
+  width: 12px;
+  height: 12px;
+}
+
+.forgot {
+  cursor: pointer;
+
+  font-weight: 600;
+}
+
+/* ================================
+   SIGN IN
+================================ */
+
+.login-btn {
+  width: 100%;
+  height: 44px;
+
+  border: none;
+
+  border-radius: 10px;
+
+  background: #ff4818;
+
+  color: white;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition: .25s;
+}
+
+.login-btn:hover {
+  background: #e83b0c;
+
+  transform: translateY(-2px);
+}
+
+.login-btn:disabled {
+  opacity: .7;
+
+  cursor: not-allowed;
+
+  transform: none;
+}
+
+/* ================================
+   OR
+================================ */
+
+.or-section {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  margin: 18px 0;
+}
+
+.or-section span {
+  flex: 1;
+
+  height: 1px;
+
+  background: rgba(255,255,255,.45);
+}
+
+.or-section p {
+  font-size: 11px;
+
+  font-weight: 700;
+}
+
+/* ================================
+   SOCIAL BUTTONS
+================================ */
+
+.google-btn,
+.microsoft-btn {
+  width: 100%;
+  height: 40px;
+
+  border: none;
+
+  border-radius: 9px;
+
+  cursor: pointer;
+
+  font-size: 12px;
+  font-weight: 600;
+
+  margin-bottom: 10px;
+
+  transition: .25s;
+}
+
+.google-btn {
+  background: white;
+
+  color: #333;
+}
+
+.microsoft-btn {
+  background: #292929;
+
+  color: white;
+}
+
+.google-btn:hover,
+.microsoft-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* ================================
+   CREATE ACCOUNT
+================================ */
+
+.create-account {
+  text-align: center;
+
+  font-size: 11px;
+
+  margin-top: 15px;
+}
+
+.create-account span {
+  color: #fff000;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-left: 4px;
+}
+
+.create-account span:hover {
+  text-decoration: underline;
+}
+
+/* ================================
+   CENTER ON SCREEN
+================================ */
+
+@media (min-width: 901px) {
+
+  #root {
+    min-height: 100vh;
+
+    display: flex;
+
+    justify-content: center;
+    align-items: center;
+  }
+}
+
+/* ================================
+   TABLET
+================================ */
+
+@media (max-width: 900px) {
+
+  .login-container {
+    width: 94vw;
+
+    height: auto;
+
+    min-height: 650px;
+  }
+
+  .login-left {
+    width: 50%;
+  }
+
+  .login-right {
+    width: 50%;
+  }
+}
+
+/* ================================
+   MOBILE
+================================ */
+
+@media (max-width: 700px) {
+
+  #root {
+    min-height: 100vh;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-container {
+    width: 94vw;
+
+    min-height: auto;
+
+    height: auto;
+
+    flex-direction: column;
+  }
+
+  .login-left {
+    width: 100%;
+
+    height: 280px;
+  }
+
+  .login-right {
+    width: 100%;
+
+    padding: 20px;
+  }
+
+  .image-overlay {
+    left: 20px;
+    bottom: 18px;
+  }
+
+  .image-overlay h2 {
+    font-size: 23px;
+  }
+
+  .feature-box > div {
+    width: 70px;
+  }
+}

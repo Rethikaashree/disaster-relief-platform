@@ -1,0 +1,498 @@
+/* =====================================================
+   RESOURCE PAGE
+===================================================== */
+
+.resource-page {
+  width: 100%;
+  min-height: calc(100vh - 70px);
+  padding: 35px 5%;
+  box-sizing: border-box;
+}
+
+
+/* =====================================================
+   TITLE
+===================================================== */
+
+.resource-title {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 30px;
+}
+
+.resource-title-icon {
+  width: 58px;
+  height: 58px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(30, 136, 229, 0.12);
+
+  border-radius: 16px;
+
+  font-size: 30px;
+}
+
+.resource-title h1 {
+  margin: 0;
+
+  font-size: clamp(25px, 3vw, 36px);
+
+  font-weight: 750;
+}
+
+.resource-title p {
+  margin: 7px 0 0;
+
+  font-size: 15px;
+
+  opacity: 0.7;
+}
+
+
+/* =====================================================
+   CARD
+===================================================== */
+
+.resource-card {
+  width: 100%;
+
+  background: white;
+
+  border-radius: 20px;
+
+  padding: 30px;
+
+  margin-bottom: 30px;
+
+  box-sizing: border-box;
+
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.07);
+}
+
+
+/* =====================================================
+   CARD HEADING
+===================================================== */
+
+.card-heading {
+  display: flex;
+  align-items: center;
+
+  gap: 15px;
+
+  margin-bottom: 28px;
+}
+
+.card-heading > span {
+  width: 45px;
+  height: 45px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 12px;
+
+  background: rgba(30, 136, 229, 0.1);
+
+  font-size: 21px;
+}
+
+.card-heading h2 {
+  margin: 0;
+
+  font-size: 21px;
+}
+
+.card-heading p {
+  margin: 5px 0 0;
+
+  font-size: 14px;
+
+  opacity: 0.65;
+}
+
+
+/* =====================================================
+   FORM
+===================================================== */
+
+.resource-form-row {
+  display: grid;
+
+  grid-template-columns: repeat(2, 1fr);
+
+  gap: 25px;
+
+  margin-bottom: 20px;
+}
+
+.resource-group {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 8px;
+}
+
+.resource-group label {
+  font-size: 14px;
+
+  font-weight: 650;
+}
+
+.resource-group input,
+.resource-group select {
+  width: 100%;
+
+  height: 48px;
+
+  padding: 0 15px;
+
+  border: 1px solid #d9dee7;
+
+  border-radius: 10px;
+
+  outline: none;
+
+  font-size: 15px;
+
+  background: white;
+
+  box-sizing: border-box;
+
+  transition: 0.2s;
+}
+
+.resource-group input:focus,
+.resource-group select:focus {
+  border-color: #1976d2;
+
+  box-shadow:
+    0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+
+/* =====================================================
+   SUBMIT
+===================================================== */
+
+.resource-submit {
+  width: 100%;
+
+  height: 52px;
+
+  border: none;
+
+  border-radius: 11px;
+
+  background: #1976d2;
+
+  color: white;
+
+  font-size: 16px;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-top: 10px;
+
+  transition: 0.2s;
+}
+
+.resource-submit:hover {
+  transform: translateY(-1px);
+
+  opacity: 0.92;
+}
+
+.resource-submit:disabled {
+  opacity: 0.6;
+
+  cursor: not-allowed;
+}
+
+
+/* =====================================================
+   LIST HEADER
+===================================================== */
+
+.list-header {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 20px;
+
+  margin-bottom: 25px;
+}
+
+.list-header h2 {
+  margin: 0;
+
+  font-size: 21px;
+}
+
+.list-header p {
+  margin: 5px 0 0;
+
+  font-size: 14px;
+
+  opacity: 0.65;
+}
+
+
+/* =====================================================
+   REFRESH
+===================================================== */
+
+.refresh-button {
+  border: none;
+
+  padding: 11px 18px;
+
+  border-radius: 9px;
+
+  background: #eef5ff;
+
+  color: #1769aa;
+
+  font-weight: 650;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+}
+
+
+/* =====================================================
+   TABLE
+===================================================== */
+
+.resource-table-container {
+  width: 100%;
+
+  overflow-x: auto;
+}
+
+.resource-table {
+  width: 100%;
+
+  border-collapse: collapse;
+
+  min-width: 900px;
+}
+
+.resource-table th {
+  text-align: left;
+
+  padding: 15px 12px;
+
+  background: #f5f7fa;
+
+  font-size: 13px;
+
+  font-weight: 700;
+}
+
+.resource-table td {
+  padding: 16px 12px;
+
+  border-bottom: 1px solid #edf0f4;
+
+  font-size: 14px;
+}
+
+.resource-table tbody tr:hover {
+  background: #fafcff;
+}
+
+.resource-name {
+  font-weight: 700;
+}
+
+
+/* =====================================================
+   STATUS
+===================================================== */
+
+.status-badge {
+  display: inline-flex;
+
+  padding: 6px 11px;
+
+  border-radius: 20px;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+.available {
+  background: #e8f7ee;
+
+  color: #18864b;
+}
+
+.low-stock {
+  background: #fff4dc;
+
+  color: #a86b00;
+}
+
+.out-stock {
+  background: #ffe8e8;
+
+  color: #d32f2f;
+}
+
+
+/* =====================================================
+   DELETE
+===================================================== */
+
+.delete-button {
+  border: none;
+
+  width: 35px;
+
+  height: 35px;
+
+  border-radius: 8px;
+
+  background: #fff0f0;
+
+  cursor: pointer;
+
+  font-size: 15px;
+}
+
+.delete-button:hover {
+  background: #ffdada;
+}
+
+
+/* =====================================================
+   EMPTY
+===================================================== */
+
+.empty-resource {
+  text-align: center;
+
+  padding: 55px 20px;
+
+  opacity: 0.7;
+}
+
+.empty-icon {
+  font-size: 45px;
+
+  margin-bottom: 10px;
+}
+
+.empty-resource h3 {
+  margin: 5px 0;
+}
+
+.empty-resource p {
+  margin: 5px 0;
+}
+
+
+/* =====================================================
+   DARK MODE
+===================================================== */
+
+.dark .resource-card {
+  background: #18212b;
+
+  color: #f2f5f8;
+
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.dark .resource-group input,
+.dark .resource-group select {
+  background: #202b36;
+
+  color: white;
+
+  border-color: #3b4652;
+}
+
+.dark .resource-table th {
+  background: #202b36;
+}
+
+.dark .resource-table td {
+  border-color: #303b47;
+}
+
+.dark .resource-table tbody tr:hover {
+  background: #202b36;
+}
+
+.dark .refresh-button {
+  background: #263b50;
+
+  color: #90caf9;
+}
+
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 900px) {
+
+  .resource-page {
+    padding: 25px 3%;
+  }
+
+  .resource-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-card {
+    padding: 22px;
+  }
+}
+
+
+@media (max-width: 600px) {
+
+  .resource-title {
+    align-items: flex-start;
+  }
+
+  .resource-title-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+  }
+
+  .resource-title h1 {
+    font-size: 25px;
+  }
+
+  .list-header {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+  .refresh-button {
+    width: 100%;
+  }
+}
