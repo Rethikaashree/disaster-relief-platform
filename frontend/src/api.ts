@@ -11,8 +11,16 @@ export function normalizeListResponse<T>(
   return Array.isArray(payload?.items) ? (payload.items as T[]) : [];
 }
 
+export function normalizeBaseUrl(raw?: string): string {
+  const url = (raw || "/api").trim().replace(/\/+$/, "");
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    return url;
+  }
+  return url.endsWith("/api") ? url : `${url}/api`;
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
+  baseURL: normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL),
   timeout: 30000,
 });
 
