@@ -1,0 +1,166 @@
+import axios from "axios";
+import type { Beneficiary, DashboardStatistics, User } from "./types";
+
+export function normalizeListResponse<T>(
+  payload: T[] | { items: T[]; total?: number },
+): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  return Array.isArray(payload?.items) ? (payload.items as T[]) : [];
+}
+
+const api = axios.create({
+  baseURL: "/api",
+  timeout: 30000,
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    api.post("/auth/login", { email, password }),
+  register: (role: "BENEFICIARY" | "DONOR", payload: Record<string, unknown>) =>
+    api.post(`/auth/${role.toLowerCase()}/register`, payload),
+  changePassword: (payload: {
+    current_password: string;
+    password: string;
+    confirm_password: string;
+  }) => api.post("/auth/change-password", payload),
+  logout: () => api.post("/auth/logout"),
+  me: () => api.get("/auth/me"),
+};
+
+export const beneficiaryApi = {
+  create: (data: Record<string, unknown>) => api.post("/beneficiaries", data),
+  mine: () =>
+    api.get<{ items: Beneficiary[]; total: number }>(
+      "/beneficiaries/my-applications",
+    ),
+  submit: (id: number) => api.post(`/beneficiaries/${id}/submit`),
+  list: () =>
+    api
+      .get<{ items: Beneficiary[]; total: number }>("/beneficiaries")
+      .then(({ data }) => ({
+        data: normalizeListResponse<Beneficiary>(data),
+      })),
+  get: (id: number) => api.get(`/beneficiaries/${id}`),
+  update: (id: number, data: Record<string, unknown>) =>
+    api.put(`/beneficiaries/${id}`, data),
+  checkDuplicates: (data: Record<string, unknown>) =>
+    api.post("/beneficiaries/check-duplicate", data),
+  verify: (id: number, data: Record<string, unknown>) =>
+    api.post(`/beneficiaries/${id}/verify`, data),
+  reject: (id: number, data: Record<string, unknown>) =>
+    api.post(`/beneficiaries/${id}/reject`, data),
+  flagDuplicate: (id: number, data: Record<string, unknown>) =>
+    api.post(`/beneficiaries/${id}/flag-duplicate`, data),
+  history: (id: number) => api.get(`/beneficiaries/${id}/history`),
+};
+
+export const documentApi = {
+  upload: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/aadhaar/upload?beneficiary_id=${id}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  scan: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/aadhaar/scan?beneficiary_id=${id}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+export const dashboardApi = {
+  statistics: () => api.get<DashboardStatistics>("/dashboard/statistics"),
+};
+
+export const donorApi = {
+  overview: () => api.get("/donor/overview"),
+  pledges: () => api.get("/donor/pledges"),
+  createPledge: (payload: {
+    amount: string;
+    campaign: string;
+    message?: string;
+  }) => api.post("/donor/pledges", payload),
+};
+
+export const officerApi = {
+  list: () => api.get("/admin/officers"),
+  create: (payload: Record<string, string>) =>
+    api.post("/admin/officers", payload),
+  setStatus: (id: number, status: "ACTIVE" | "INACTIVE") =>
+    api.patch(`/admin/officers/${id}/status`, { status }),
+  resetPassword: (
+    id: number,
+    payload: { password: string; confirm_password: string },
+  ) => api.patch(`/admin/officers/${id}/password`, payload),
+};
+
+export const notificationApi = {
+  list: () => api.get("/notifications"),
+  markRead: (id: number) => api.patch(`/notifications/${id}/read`),
+};
+
+export const auditApi = {
+  list: () => api.get("/audit-logs"),
+};
+
+export const distributionApi = {
+  centres: (district?: string) =>
+    api.get<{ items: import("./types").DistributionCentre[]; total: number }>(
+      "/distribution/centres",
+      { params: district && district !== "all" ? { district } : {} }
+    ),
+  centre: (id: number) =>
+    api.get<import("./types").DistributionCentre>(`/distribution/centres/${id}`),
+  inventory: (params?: {
+    district?: string;
+    category?: string;
+    stock_status?: string;
+    low_stock_only?: boolean;
+  }) =>
+    api.get<{ items: import("./types").SupplyInventory[]; total: number }>(
+      "/distribution/inventory",
+      { params }
+    ),
+  recommendations: (beneficiaryId: number) =>
+    api.get<{
+      beneficiary_id: number;
+      recommendations: import("./types").AllocationRecommendation[];
+    }>(`/beneficiaries/${beneficiaryId}/recommendations`),
+  allocate: (
+    beneficiaryId: number,
+    payload: {
+      centre_id: number;
+      allocations: {
+        inventory_id: number;
+        request_item_id?: number | null;
+        quantity: number;
+        notes?: string;
+      }[];
+    }
+  ) => api.post(`/beneficiaries/${beneficiaryId}/allocate`, payload),
+  dispatch: (allocationId: number) =>
+    api.post(`/allocations/${allocationId}/dispatch`),
+  deliver: (allocationId: number) =>
+    api.post(`/allocations/${allocationId}/deliver`),
+  allocations: (beneficiaryId: number) =>
+    api.get<{ items: import("./types").SupplyAllocation[]; total: number }>(
+      `/beneficiaries/${beneficiaryId}/allocations`
+    ),
+};
+
+export const getUser = (): User | null => {
+  const stored = localStorage.getItem("user");
+  return stored ? (JSON.parse(stored) as User) : null;
+};

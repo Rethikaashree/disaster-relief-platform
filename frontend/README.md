@@ -1,70 +1,64 @@
-# Getting Started with Create React App
+# Disaster Relief Verification Portal
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The project contains a FastAPI backend and a Vite React frontend. The public landing page offers separate Beneficiary and Donor paths; officer access is restricted to accounts created by the Main Admin.
 
-## Available Scripts
+## Requirements
 
-In the project directory, you can run:
+- Python 3.11 or newer
+- Node.js 20 or newer
+- Windows PowerShell
 
-### `npm start`
+## First-time setup
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+From the repository root:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+Copy-Item backend\.env.example backend\.env
+Set-Location backend
+..\.venv\Scripts\python.exe -m app.bootstrap_admin
+```
 
-### `npm test`
+The bootstrap command prompts for the initial Main Admin name, email, and password. The password is entered without echo and is never printed. It refuses to create another Main Admin if one already exists. Set a long random `SECRET_KEY` in `backend\.env` before sharing the environment; production mode rejects the development fallback key.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+If an existing local database already has a Main Admin but its password is unavailable, reset it locally with:
 
-### `npm run build`
+```powershell
+Set-Location backend
+..\.venv\Scripts\python.exe -m app.reset_admin_password
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+The reset command prompts for the existing Main Admin email and a new password, hashes it, records an audit entry, and revokes active sessions.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Run the services
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Start the backend in one PowerShell window:
 
-### `npm run eject`
+```powershell
+Set-Location "C:\path\to\FloodReliefPortal\backend"
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Start the frontend in a second PowerShell window:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```powershell
+Set-Location "C:\path\to\FloodReliefPortal\frontend"
+npm install
+npm run dev -- --host 127.0.0.1 --port 5173
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Open `http://localhost:5173`. The frontend proxies `/api` calls to `http://127.0.0.1:8000`. FastAPI documentation is available at `http://localhost:8000/docs`.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Tests
 
-## Learn More
+```powershell
+Set-Location "C:\path\to\FloodReliefPortal\backend"
+..\.venv\Scripts\python.exe -m pytest tests\test_auth_roles.py -q
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Set-Location "C:\path\to\FloodReliefPortal\frontend"
+npm test -- --run
+npm run build
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Donation pledges record interest only; the app does not accept payments. OCR assists with document reading and does not perform official UIDAI authentication.

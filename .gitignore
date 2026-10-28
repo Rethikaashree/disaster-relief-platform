@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.venv/
+env/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Database and uploaded data
+*.db
+*.sqlite
+*.sqlite3
+verification.db
+backend/verification.db
+uploads/
+documents/
+
+# Build and output artifacts
+dist/
+build/
+*.tsbuildinfo
+audit-results.json
+frontend/dist/
+frontend/tsconfig.app.tsbuildinfo
+frontend/tsconfig.node.tsbuildinfo
+
+# Python cache & test files
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & temp
+*.log
+.DS_Store
+Thumbs.db
