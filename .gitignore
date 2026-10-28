@@ -19,6 +19,8 @@ verification.db
 backend/verification.db
 uploads/
 documents/
+media/
+aadhaar/
 
 # Build and output artifacts
 dist/
