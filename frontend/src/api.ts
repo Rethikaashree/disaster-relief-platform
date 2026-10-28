@@ -12,7 +12,7 @@ export function normalizeListResponse<T>(
 }
 
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: ((import.meta as any).env?.VITE_API_BASE_URL as string) || "/api",
   timeout: 30000,
 });
 
