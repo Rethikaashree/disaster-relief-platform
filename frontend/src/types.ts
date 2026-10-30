@@ -147,6 +147,7 @@ export interface Beneficiary {
   updated_at: string;
   request_items?: ReliefRequestItem[];
   allocations?: SupplyAllocation[];
+  distributions?: ReliefDistribution[];
 }
 
 export interface DashboardStatistics {
@@ -166,4 +167,57 @@ export interface DashboardStatistics {
   most_requested?: { resource: string; requested: number }[];
   recent_applications: Beneficiary[];
   recent_activity: Record<string, unknown>[];
+}
+
+
+export type DistributionStatus =
+  | "Allocated"
+  | "Distributed – Awaiting Beneficiary Confirmation"
+  | "Fully Received – Confirmed"
+  | "Partially Received"
+  | "Not Received"
+  | "Issue Reported";
+
+export interface ReliefDistributionItem {
+  id: number;
+  distribution_id: number;
+  allocation_id?: number | null;
+  item_name: string;
+  category?: string | null;
+  unit: string;
+  quantity_allocated: number;
+  quantity_distributed: number;
+  quantity_received?: number | null;
+  quantity_missing?: number | null;
+  item_status: DistributionStatus | string;
+  notes?: string | null;
+}
+
+export interface ReliefDistribution {
+  id: number;
+  distribution_ref: string;
+  beneficiary_id: number;
+  beneficiary_name?: string | null;
+  application_id?: string | null;
+  officer_id: number;
+  officer_name?: string | null;
+  centre_id?: number | null;
+  centre_name?: string | null;
+  status: DistributionStatus | string;
+  distributed_at: string;
+  confirmed_at?: string | null;
+  officer_notes?: string | null;
+  beneficiary_feedback?: string | null;
+  discrepancy_details?: string | null;
+  items: ReliefDistributionItem[];
+}
+
+export interface DistributionTrackingSummary {
+  total_beneficiaries_with_allocations: number;
+  total_distributions_completed: number;
+  beneficiaries_confirmed_receipt: number;
+  pending_confirmations: number;
+  partial_or_unsuccessful: number;
+  reported_discrepancies: number;
+  distributions: ReliefDistribution[];
 }

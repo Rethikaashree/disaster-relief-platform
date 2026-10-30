@@ -13,6 +13,13 @@ import {
   Search,
   ShieldCheck,
   UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  Package,
+  Truck,
+  ShieldAlert,
+  FileQuestion,
 } from "lucide-react";
 import {
   Bar,
@@ -26,7 +33,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { beneficiaryApi, documentApi, getUser } from "../api";
+import { beneficiaryApi, documentApi, distributionApi, getUser } from "../api";
+import type { ReliefDistribution } from "../types";
 import { NotificationsPanel } from "../components/NotificationsPanel";
 import type { Beneficiary } from "../types";
 
@@ -82,6 +90,16 @@ export function BeneficiaryDashboard() {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [distributions, setDistributions] = useState<ReliefDistribution[]>([]);
+  const [confirmModal, setConfirmModal] = useState<{
+    dist: ReliefDistribution;
+    action: "CONFIRM_ALL" | "PARTIALLY_RECEIVED" | "NOT_RECEIVED" | "REPORT_ISSUE";
+  } | null>(null);
+  const [missingItemsState, setMissingItemsState] = useState<
+    Record<number, { received: number; missing: number; reason: string }>
+  >({});
+  const [confirmFeedback, setConfirmFeedback] = useState("");
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const handleFileChange = async (selectedFile: File | null) => {
     setFile(selectedFile);
@@ -142,12 +160,67 @@ export function BeneficiaryDashboard() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      const { data } = await beneficiaryApi.mine();
-      setApplications(data.items);
+      const [appRes, distRes] = await Promise.all([
+        beneficiaryApi.mine(),
+        distributionApi.myDistributions().catch(() => ({ data: { items: [], total: 0 } })),
+      ]);
+      setApplications(appRes.data.items);
+      setDistributions(distRes.data.items || []);
     } catch (err) {
       setError(apiError(err));
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const openConfirmModal = (
+    dist: ReliefDistribution,
+    action: "CONFIRM_ALL" | "PARTIALLY_RECEIVED" | "NOT_RECEIVED" | "REPORT_ISSUE"
+  ) => {
+    const initialMissing: Record<number, { received: number; missing: number; reason: string }> = {};
+    dist.items.forEach((it) => {
+      if (action === "CONFIRM_ALL") {
+        initialMissing[it.id] = { received: it.quantity_distributed, missing: 0, reason: "" };
+      } else if (action === "NOT_RECEIVED") {
+        initialMissing[it.id] = { received: 0, missing: it.quantity_distributed, reason: "Item not received" };
+      } else {
+        initialMissing[it.id] = { received: it.quantity_distributed, missing: 0, reason: "" };
+      }
+    });
+    setMissingItemsState(initialMissing);
+    setConfirmFeedback("");
+    setConfirmModal({ dist, action });
+  };
+
+  const handleConfirmSubmit = async () => {
+    if (!confirmModal) return;
+    setConfirmLoading(true);
+    setError("");
+    try {
+      const missingPayload = Object.entries(missingItemsState).map(([itemId, val]) => ({
+        item_id: Number(itemId),
+        quantity_received: val.received,
+        quantity_missing: val.missing,
+        reason: val.reason,
+      }));
+
+      await distributionApi.confirmReceipt(confirmModal.dist.id, {
+        action: confirmModal.action,
+        feedback: confirmFeedback,
+        missing_items: missingPayload,
+      });
+
+      setMessage(`Receipt confirmation recorded for ${confirmModal.dist.distribution_ref}.`);
+      setConfirmModal(null);
+      await refresh();
+    } catch (err: any) {
+      setError(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to record receipt confirmation."
+      );
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -655,6 +728,375 @@ export function BeneficiaryDashboard() {
           </div>
         </form>
       )}
+      {/* RECEIPT CONFIRMATION MODAL */}
+      {confirmModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+        >
+          <div
+            className="panel"
+            style={{
+              maxWidth: "600px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+              border: "1px solid var(--border, #cbd5e1)",
+            }}
+          >
+            <div className="panel-header" style={{ marginBottom: "1rem" }}>
+              <div>
+                <h2>
+                  {confirmModal.action === "CONFIRM_ALL" && "Confirm All Supplies Received"}
+                  {confirmModal.action === "PARTIALLY_RECEIVED" && "Confirm Partial Supply Receipt"}
+                  {confirmModal.action === "NOT_RECEIVED" && "Report Supplies Not Received"}
+                  {confirmModal.action === "REPORT_ISSUE" && "Report Missing or Incorrect Items"}
+                </h2>
+                <p>Distribution Ref: <code>{confirmModal.dist.distribution_ref}</code></p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setConfirmModal(null)}
+                style={{ padding: "0.3rem 0.6rem" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#64748b" }}>
+              {confirmModal.action === "CONFIRM_ALL" && (
+                <p>
+                  You are confirming that you have received all distributed quantities in good order. This will officially close the handover record.
+                </p>
+              )}
+              {confirmModal.action === "PARTIALLY_RECEIVED" && (
+                <p>
+                  Please specify the actual quantity you received and any missing quantity for each item below:
+                </p>
+              )}
+              {confirmModal.action === "NOT_RECEIVED" && (
+                <p style={{ color: "#dc2626" }}>
+                  You are reporting that you have not received the distributed packages. This discrepancy will be immediately flagged to the relief officer.
+                </p>
+              )}
+              {confirmModal.action === "REPORT_ISSUE" && (
+                <p style={{ color: "#d97706" }}>
+                  Please detail any missing, damaged, or incorrect items so relief officers can investigate and dispatch replacements.
+                </p>
+              )}
+            </div>
+
+            {/* ITEM BREAKDOWN */}
+            {(confirmModal.action === "PARTIALLY_RECEIVED" ||
+              confirmModal.action === "REPORT_ISSUE" ||
+              confirmModal.action === "NOT_RECEIVED") && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1rem" }}>
+                {confirmModal.dist.items.map((it) => {
+                  const state = missingItemsState[it.id] || {
+                    received: it.quantity_distributed,
+                    missing: 0,
+                    reason: "",
+                  };
+                  return (
+                    <div
+                      key={it.id}
+                      style={{
+                        padding: "0.75rem",
+                        background: "var(--bg-subtle, #f8fafc)",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border, #e2e8f0)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                        <strong>{it.item_name}</strong>
+                        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
+                          Distributed: {it.quantity_distributed} {it.unit}
+                        </span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                        <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                          Quantity Received ({it.unit})
+                          <input
+                            type="number"
+                            min={0}
+                            max={it.quantity_distributed}
+                            value={state.received}
+                            disabled={confirmModal.action === "NOT_RECEIVED"}
+                            onChange={(e) => {
+                              const rec = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
+                              const miss = it.quantity_distributed - rec;
+                              setMissingItemsState((prev) => ({
+                                ...prev,
+                                [it.id]: { ...state, received: rec, missing: miss },
+                              }));
+                            }}
+                            style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                          Quantity Missing ({it.unit})
+                          <input
+                            type="number"
+                            min={0}
+                            max={it.quantity_distributed}
+                            value={state.missing}
+                            disabled={confirmModal.action === "NOT_RECEIVED"}
+                            onChange={(e) => {
+                              const miss = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
+                              const rec = it.quantity_distributed - miss;
+                              setMissingItemsState((prev) => ({
+                                ...prev,
+                                [it.id]: { ...state, received: rec, missing: miss },
+                              }));
+                            }}
+                            style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                          />
+                        </label>
+                      </div>
+                      <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                        Item Note / Reason for missing or damage
+                        <input
+                          type="text"
+                          placeholder="e.g. 1 can was punctured, or item not handed over"
+                          value={state.reason}
+                          onChange={(e) =>
+                            setMissingItemsState((prev) => ({
+                              ...prev,
+                              [it.id]: { ...state, reason: e.target.value },
+                            }))
+                          }
+                          style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* OVERALL FEEDBACK */}
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "1.25rem", fontSize: "0.85rem" }}>
+              Beneficiary Feedback & Remarks (Optional)
+              <textarea
+                rows={3}
+                placeholder="Add any remarks regarding the condition, distribution camp, or officer handover..."
+                value={confirmFeedback}
+                onChange={(e) => setConfirmFeedback(e.target.value)}
+                style={{ padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1", resize: "vertical" }}
+              />
+            </label>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setConfirmModal(null)}
+                disabled={confirmLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleConfirmSubmit}
+                disabled={confirmLoading}
+              >
+                {confirmLoading ? "Submitting confirmation..." : "Submit Confirmation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MY RELIEF DISTRIBUTION SECTION */}
+      <section className="role-section my-relief-distribution" style={{ marginTop: "1.5rem" }}>
+        <div className="role-section-heading embedded">
+          <div>
+            <h2>My Relief Distribution</h2>
+            <p>Track allocated emergency supplies, verify officer handovers, and confirm package receipts.</p>
+          </div>
+          <Truck size={20} color="#0d9488" />
+        </div>
+
+        {distributions.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {distributions.map((dist) => {
+              const isPendingConfirm = dist.status === "Distributed – Awaiting Beneficiary Confirmation";
+              return (
+                <article
+                  key={dist.id}
+                  className="panel"
+                  style={{
+                    padding: "1.25rem",
+                    border: isPendingConfirm ? "1.5px solid #f59e0b" : "1px solid var(--border, #cbd5e1)",
+                    background: "var(--bg-panel, #ffffff)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600 }}>DISTRIBUTION REF</span>
+                        <code style={{ fontSize: "0.95rem", fontWeight: 700, color: "#0f766e" }}>{dist.distribution_ref}</code>
+                      </div>
+                      <small style={{ color: "#64748b", display: "block", marginTop: "0.25rem" }}>
+                        Handed over on {new Date(dist.distributed_at).toLocaleString()} {dist.officer_name ? `by ${dist.officer_name}` : ""}
+                        {dist.centre_name ? ` · ${dist.centre_name}` : ""}
+                      </small>
+                    </div>
+                    <span
+                      className={`status-badge ${
+                        dist.status === "Fully Received – Confirmed"
+                          ? "verified"
+                          : dist.status === "Distributed – Awaiting Beneficiary Confirmation"
+                          ? "pending"
+                          : dist.status === "Partially Received"
+                          ? "under_review"
+                          : "rejected"
+                      }`}
+                      style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
+                    >
+                      {dist.status}
+                    </span>
+                  </div>
+
+                  {/* ITEMS TABLE */}
+                  <div className="table-scroll" style={{ marginBottom: "1rem" }}>
+                    <table style={{ width: "100%", fontSize: "0.85rem" }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-subtle, #f8fafc)", borderBottom: "1px solid #e2e8f0" }}>
+                          <th style={{ textAlign: "left", padding: "0.5rem" }}>Supply Item</th>
+                          <th style={{ textAlign: "center", padding: "0.5rem" }}>Allocated</th>
+                          <th style={{ textAlign: "center", padding: "0.5rem" }}>Distributed</th>
+                          <th style={{ textAlign: "center", padding: "0.5rem" }}>Received</th>
+                          <th style={{ textAlign: "center", padding: "0.5rem" }}>Missing</th>
+                          <th style={{ textAlign: "right", padding: "0.5rem" }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dist.items.map((it) => (
+                          <tr key={it.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "0.5rem" }}>
+                              <strong>{it.item_name}</strong>
+                              {it.category && <span style={{ fontSize: "0.75rem", color: "#64748b", display: "block" }}>{it.category}</span>}
+                            </td>
+                            <td style={{ textAlign: "center", padding: "0.5rem" }}>
+                              {it.quantity_allocated} {it.unit}
+                            </td>
+                            <td style={{ textAlign: "center", padding: "0.5rem", fontWeight: 600 }}>
+                              {it.quantity_distributed} {it.unit}
+                            </td>
+                            <td style={{ textAlign: "center", padding: "0.5rem", color: it.quantity_received !== null ? "#0f766e" : "#64748b" }}>
+                              {it.quantity_received !== null ? `${it.quantity_received} ${it.unit}` : "—"}
+                            </td>
+                            <td style={{ textAlign: "center", padding: "0.5rem", color: (it.quantity_missing || 0) > 0 ? "#dc2626" : "#64748b" }}>
+                              {(it.quantity_missing || 0) > 0 ? `${it.quantity_missing} ${it.unit}` : "0"}
+                            </td>
+                            <td style={{ textAlign: "right", padding: "0.5rem" }}>
+                              <span
+                                style={{
+                                  fontSize: "0.75rem",
+                                  padding: "0.15rem 0.4rem",
+                                  borderRadius: "4px",
+                                  background: it.item_status === "Fully Received – Confirmed" ? "#dcfce7" : "#fef3c7",
+                                  color: it.item_status === "Fully Received – Confirmed" ? "#166534" : "#92400e",
+                                }}
+                              >
+                                {it.item_status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* FEEDBACK / DISCREPANCY DISPLAY */}
+                  {dist.discrepancy_details && (
+                    <div style={{ padding: "0.5rem 0.75rem", background: "#fef2f2", color: "#991b1b", borderRadius: "6px", fontSize: "0.8rem", marginBottom: "0.75rem", border: "1px solid #fecaca" }}>
+                      <strong>Reported Discrepancy:</strong> {dist.discrepancy_details}
+                    </div>
+                  )}
+
+                  {dist.beneficiary_feedback && (
+                    <div style={{ padding: "0.5rem 0.75rem", background: "var(--bg-subtle, #f8fafc)", color: "#334155", borderRadius: "6px", fontSize: "0.8rem", marginBottom: "0.75rem", border: "1px solid #e2e8f0" }}>
+                      <strong>Your Feedback:</strong> {dist.beneficiary_feedback}
+                      {dist.confirmed_at && (
+                        <span style={{ fontSize: "0.75rem", color: "#64748b", marginLeft: "0.5rem" }}>
+                          (Confirmed {new Date(dist.confirmed_at).toLocaleString()})
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ACTIONS FOR PENDING CONFIRMATION */}
+                  {isPendingConfirm && (
+                    <div style={{ borderTop: "1px solid var(--border, #e2e8f0)", paddingTop: "0.75rem" }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#334155", display: "block", marginBottom: "0.5rem" }}>
+                        Action required: Verify and confirm received supplies
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                        <button
+                          type="button"
+                          className="primary-button"
+                          onClick={() => openConfirmModal(dist, "CONFIRM_ALL")}
+                          style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", background: "#059669" }}
+                        >
+                          <CheckCircle2 size={15} /> Confirm All Received
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => openConfirmModal(dist, "PARTIALLY_RECEIVED")}
+                          style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                        >
+                          <AlertCircle size={15} color="#d97706" /> Partially Received
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => openConfirmModal(dist, "NOT_RECEIVED")}
+                          style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                        >
+                          <XCircle size={15} color="#dc2626" /> Not Received
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => openConfirmModal(dist, "REPORT_ISSUE")}
+                          style={{ fontSize: "0.8rem", padding: "0.35rem 0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                        >
+                          <ShieldAlert size={15} color="#b91c1c" /> Report Missing or Incorrect Items
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: "1.5rem", textAlign: "center" }}>
+            <Package size={32} color="#94a3b8" style={{ margin: "0 auto 0.5rem" }} />
+            <p style={{ margin: 0 }}>No relief supply distributions have been handed over for your application yet.</p>
+            <small style={{ color: "#64748b" }}>Once a relief officer hands over allocated packages, your distribution reference ID and confirmation options will appear here.</small>
+          </div>
+        )}
+      </section>
+
       <NotificationsPanel />
       <section className="role-section aid-history">
         <div className="role-section-heading embedded">

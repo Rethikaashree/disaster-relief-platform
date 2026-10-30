@@ -16,7 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { distributionApi, beneficiaryApi } from "../api";
-import type { DistributionCentre, SupplyInventory, Beneficiary } from "../types";
+import type { DistributionCentre, SupplyInventory, Beneficiary, DistributionTrackingSummary } from "../types";
 
 const DISTRICTS = [
   "All",
@@ -51,7 +51,10 @@ export function Distribution() {
   const [district, setDistrict] = useState("All");
   const [category, setCategory] = useState("All");
   const [stockStatus, setStockStatus] = useState("All");
-  const [viewTab, setViewTab] = useState<"centres" | "inventory" | "awaiting">("centres");
+  const [viewTab, setViewTab] = useState<"centres" | "inventory" | "awaiting" | "tracking">("centres");
+  const [trackingSummary, setTrackingSummary] = useState<DistributionTrackingSummary | null>(null);
+  const [trackingSearch, setTrackingSearch] = useState("");
+  const [trackingStatusFilter, setTrackingStatusFilter] = useState("All");
   const [awaitingRequests, setAwaitingRequests] = useState<Beneficiary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -60,10 +63,14 @@ export function Distribution() {
     setLoading(true);
     setError("");
     try {
-      const [centresRes, benRes] = await Promise.all([
+      const [centresRes, benRes, trackRes] = await Promise.all([
         distributionApi.centres(district !== "All" ? district : undefined),
         beneficiaryApi.list(),
+        distributionApi.trackingSummary().catch(() => ({ data: null })),
       ]);
+      if (trackRes.data) {
+        setTrackingSummary(trackRes.data);
+      }
       setCentres(centresRes.data.items);
       if (centresRes.data.items.length > 0) {
         if (!selectedCentre || !centresRes.data.items.some((c) => c.id === selectedCentre.id)) {
@@ -200,6 +207,12 @@ export function Distribution() {
           onClick={() => setViewTab("awaiting")}
         >
           <Truck size={16} /> Awaiting supplies ({awaitingRequests.length})
+        </button>
+        <button
+          className={viewTab === "tracking" ? "primary-button" : "secondary-button"}
+          onClick={() => setViewTab("tracking")}
+        >
+          <PackageCheck size={16} /> Distribution & Receipt Tracking
         </button>
       </div>
 
@@ -535,6 +548,206 @@ export function Distribution() {
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+      {/* TAB 4: DISTRIBUTION & BENEFICIARY RECEIPT TRACKING */}
+      {viewTab === "tracking" && (
+        <section style={{ marginTop: "16px" }}>
+          {/* TRACKING METRIC CARDS */}
+          <div className="metric-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", marginBottom: "16px" }}>
+            <article className="metric-card">
+              <div className="metric-icon blue"><Boxes /></div>
+              <div>
+                <span>Beneficiaries with allocations</span>
+                <strong>{trackingSummary?.total_beneficiaries_with_allocations ?? 0}</strong>
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-icon green"><CheckCircle2 color="#059669" /></div>
+              <div>
+                <span>Distributions completed</span>
+                <strong>{trackingSummary?.total_distributions_completed ?? 0}</strong>
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-icon teal"><ShieldCheck color="#0d9488" /></div>
+              <div>
+                <span>Receipts confirmed</span>
+                <strong>{trackingSummary?.beneficiaries_confirmed_receipt ?? 0} citizens</strong>
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-icon amber"><Truck color="#d97706" /></div>
+              <div>
+                <span>Pending confirmations</span>
+                <strong>{trackingSummary?.pending_confirmations ?? 0}</strong>
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-icon amber"><AlertTriangle color="#ea580c" /></div>
+              <div>
+                <span>Partial / unsuccessful</span>
+                <strong>{trackingSummary?.partial_or_unsuccessful ?? 0}</strong>
+              </div>
+            </article>
+
+            <article className="metric-card">
+              <div className="metric-icon red"><ShieldAlert color="#dc2626" /></div>
+              <div>
+                <span>Reported discrepancies</span>
+                <strong>{trackingSummary?.reported_discrepancies ?? 0} cases</strong>
+              </div>
+            </article>
+          </div>
+
+          {/* DISTRIBUTION REGISTRY TABLE */}
+          <section className="panel table-panel">
+            <div className="panel-header" style={{ flexWrap: "wrap", gap: "10px" }}>
+              <div>
+                <h2>Relief distribution & receipt confirmation registry</h2>
+                <p>Auditable log of supplies handed over, unique reference IDs, and beneficiary confirmation statuses</p>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <label className="search-box compact-search">
+                  <Search size={14} />
+                  <input
+                    placeholder="Search ref ID, beneficiary, or item..."
+                    value={trackingSearch}
+                    onChange={(e) => setTrackingSearch(e.target.value)}
+                  />
+                </label>
+
+                <label className="select-box compact-select">
+                  <Filter size={14} />
+                  <select value={trackingStatusFilter} onChange={(e) => setTrackingStatusFilter(e.target.value)}>
+                    <option value="All">All Statuses</option>
+                    <option value="Distributed – Awaiting Beneficiary Confirmation">Awaiting Confirmation</option>
+                    <option value="Fully Received – Confirmed">Fully Received</option>
+                    <option value="Partially Received">Partially Received</option>
+                    <option value="Not Received">Not Received</option>
+                    <option value="Issue Reported">Issue Reported</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Distribution Ref</th>
+                    <th>Beneficiary</th>
+                    <th>Handover Details</th>
+                    <th>Supplies Distributed</th>
+                    <th>Confirmation Status</th>
+                    <th>Beneficiary Feedback / Issues</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const filtered = (trackingSummary?.distributions || []).filter((d) => {
+                      const matchSearch =
+                        trackingSearch === "" ||
+                        d.distribution_ref.toLowerCase().includes(trackingSearch.toLowerCase()) ||
+                        (d.beneficiary_name || "").toLowerCase().includes(trackingSearch.toLowerCase()) ||
+                        (d.application_id || "").toLowerCase().includes(trackingSearch.toLowerCase()) ||
+                        d.items.some((it) => it.item_name.toLowerCase().includes(trackingSearch.toLowerCase()));
+                      const matchStatus =
+                        trackingStatusFilter === "All" || d.status === trackingStatusFilter;
+                      return matchSearch && matchStatus;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>
+                            {trackingSummary?.distributions?.length === 0
+                              ? "No supply distributions have been recorded yet. Mark allocations as distributed from the Beneficiary Review portal."
+                              : "No distribution records match the selected filters."}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filtered.map((d) => (
+                      <tr key={d.id}>
+                        <td>
+                          <code style={{ fontWeight: 700, color: "#0f766e" }}>{d.distribution_ref}</code>
+                          <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>
+                            {d.centre_name || "Regional Hub"}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{d.beneficiary_name || "Citizen"}</strong>
+                          <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>
+                            <code>{d.application_id}</code>
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: "12px", display: "block" }}>
+                            {new Date(d.distributed_at).toLocaleDateString()} {new Date(d.distributed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#64748b" }}>
+                            By {d.officer_name || "Officer"}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            {d.items.map((it) => (
+                              <span key={it.id} style={{ fontSize: "12px" }}>
+                                • <strong>{it.item_name}</strong>: {it.quantity_distributed} {it.unit}
+                                {it.quantity_received !== null && (
+                                  <span style={{ color: it.quantity_missing ? "#dc2626" : "#059669", marginLeft: "4px" }}>
+                                    (rec: {it.quantity_received}{it.quantity_missing ? `, miss: ${it.quantity_missing}` : ""})
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`status-badge ${
+                              d.status === "Fully Received – Confirmed"
+                                ? "verified"
+                                : d.status === "Distributed – Awaiting Beneficiary Confirmation"
+                                ? "pending"
+                                : d.status === "Partially Received"
+                                ? "under_review"
+                                : "rejected"
+                            }`}
+                            style={{ fontSize: "11px" }}
+                          >
+                            {d.status}
+                          </span>
+                        </td>
+                        <td>
+                          {d.discrepancy_details ? (
+                            <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 500 }}>
+                              ⚠ {d.discrepancy_details}
+                            </span>
+                          ) : d.beneficiary_feedback ? (
+                            <span style={{ fontSize: "12px", color: "#334155" }}>
+                              "{d.beneficiary_feedback}"
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                              {d.status === "Distributed – Awaiting Beneficiary Confirmation" ? "Awaiting feedback" : "No remarks"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
       )}
     </div>

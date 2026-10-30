@@ -331,3 +331,79 @@ class AuditResponse(BaseModel):
     entity_id: str
     remarks: str | None
     created_at: datetime
+
+
+class DistributionItemHandover(BaseModel):
+    allocation_id: int | None = None
+    inventory_id: int | None = None
+    item_name: str | None = None
+    unit: str | None = None
+    quantity_allocated: int | None = None
+    quantity_distributed: int = Field(..., ge=0)
+    notes: str | None = None
+
+
+class DistributionHandoverRequest(BaseModel):
+    beneficiary_id: int
+    centre_id: int | None = None
+    officer_notes: str | None = None
+    items: list[DistributionItemHandover]
+
+
+class DistributionItemConfirm(BaseModel):
+    item_id: int
+    quantity_received: int = Field(..., ge=0)
+    quantity_missing: int = Field(0, ge=0)
+    reason: str | None = None
+
+
+class DistributionConfirmRequest(BaseModel):
+    action: str  # "CONFIRM_ALL" | "PARTIALLY_RECEIVED" | "NOT_RECEIVED" | "REPORT_ISSUE"
+    feedback: str | None = None
+    missing_items: list[DistributionItemConfirm] = []
+
+
+class ReliefDistributionItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    distribution_id: int
+    allocation_id: int | None = None
+    item_name: str
+    category: str | None = None
+    unit: str
+    quantity_allocated: int
+    quantity_distributed: int
+    quantity_received: int | None = None
+    quantity_missing: int | None = 0
+    item_status: str
+    notes: str | None = None
+
+
+class ReliefDistributionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    distribution_ref: str
+    beneficiary_id: int
+    beneficiary_name: str | None = None
+    application_id: str | None = None
+    officer_id: int
+    officer_name: str | None = None
+    centre_id: int | None = None
+    centre_name: str | None = None
+    status: str
+    distributed_at: datetime
+    confirmed_at: datetime | None = None
+    officer_notes: str | None = None
+    beneficiary_feedback: str | None = None
+    discrepancy_details: str | None = None
+    items: list[ReliefDistributionItemResponse] = []
+
+
+class DistributionTrackingSummaryResponse(BaseModel):
+    total_beneficiaries_with_allocations: int
+    total_distributions_completed: int
+    beneficiaries_confirmed_receipt: int
+    pending_confirmations: int
+    partial_or_unsuccessful: int
+    reported_discrepancies: int
+    distributions: list[ReliefDistributionResponse] = []

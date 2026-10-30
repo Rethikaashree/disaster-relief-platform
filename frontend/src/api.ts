@@ -166,6 +166,53 @@ export const distributionApi = {
     api.get<{ items: import("./types").SupplyAllocation[]; total: number }>(
       `/beneficiaries/${beneficiaryId}/allocations`
     ),
+  handover: (payload: {
+    beneficiary_id: number;
+    centre_id?: number | null;
+    officer_notes?: string;
+    items: {
+      allocation_id?: number | null;
+      inventory_id?: number | null;
+      item_name?: string;
+      unit?: string;
+      quantity_allocated?: number;
+      quantity_distributed: number;
+      notes?: string;
+    }[];
+  }) =>
+    api.post<{ message: string; distribution: import("./types").ReliefDistribution }>(
+      "/distributions/handover",
+      payload
+    ),
+  myDistributions: () =>
+    api.get<{ items: import("./types").ReliefDistribution[]; total: number }>(
+      "/distributions/my-distributions"
+    ),
+  beneficiaryDistributions: (beneficiaryId: number) =>
+    api.get<{ items: import("./types").ReliefDistribution[]; total: number }>(
+      `/distributions/beneficiary/${beneficiaryId}`
+    ),
+  confirmReceipt: (
+    distributionId: number,
+    payload: {
+      action: string;
+      feedback?: string;
+      missing_items?: {
+        item_id: number;
+        quantity_received: number;
+        quantity_missing?: number;
+        reason?: string;
+      }[];
+    }
+  ) =>
+    api.post<{ message: string; distribution: import("./types").ReliefDistribution }>(
+      `/distributions/${distributionId}/confirm`,
+      payload
+    ),
+  trackingSummary: () =>
+    api.get<import("./types").DistributionTrackingSummary>(
+      "/distributions/tracking-summary"
+    ),
 };
 
 export const getUser = (): User | null => {

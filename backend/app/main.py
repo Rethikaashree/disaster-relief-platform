@@ -23,6 +23,9 @@ from .models import (
     SupplyInventory,
     User,
     VerificationRecord,
+    ReliefDistribution,
+    ReliefDistributionItem,
+    DistributionConfirmation,
 )
 from .schemas import (
     AllocationRecommendationResponse,
@@ -47,6 +50,11 @@ from .schemas import (
     SupplyInventoryResponse,
     UserResponse,
     VerificationRequest,
+    DistributionHandoverRequest,
+    DistributionConfirmRequest,
+    ReliefDistributionResponse,
+    ReliefDistributionItemResponse,
+    DistributionTrackingSummaryResponse,
 )
 from .security import create_access_token, get_current_user, hash_password, normalize_role, require_role, verify_password
 from .services.duplicate_service import check_duplicates
@@ -1343,6 +1351,359 @@ def audit_logs(user: User = Depends(require_role("MAIN_ADMIN")), db: Session = D
         remarks=item.remarks,
         created_at=item.created_at,
     ) for item in records]}
+
+
+
+def _distribution_response(dist: ReliefDistribution) -> ReliefDistributionResponse:
+    centre_name = None
+    if dist.centre:
+        centre_name = dist.centre.name
+    elif dist.items and dist.items[0].allocation and dist.items[0].allocation.centre:
+        centre_name = dist.items[0].allocation.centre.name
+
+    return ReliefDistributionResponse(
+        id=dist.id,
+        distribution_ref=dist.distribution_ref,
+        beneficiary_id=dist.beneficiary_id,
+        beneficiary_name=dist.beneficiary.name if dist.beneficiary else None,
+        application_id=dist.beneficiary.application_id if dist.beneficiary else None,
+        officer_id=dist.officer_id,
+        officer_name=dist.officer.name if dist.officer else "Authorized Officer",
+        centre_id=dist.centre_id,
+        centre_name=centre_name,
+        status=dist.status,
+        distributed_at=dist.distributed_at,
+        confirmed_at=dist.confirmed_at,
+        officer_notes=dist.officer_notes,
+        beneficiary_feedback=dist.beneficiary_feedback,
+        discrepancy_details=dist.discrepancy_details,
+        items=[
+            ReliefDistributionItemResponse(
+                id=item.id,
+                distribution_id=item.distribution_id,
+                allocation_id=item.allocation_id,
+                item_name=item.item_name,
+                category=item.category,
+                unit=item.unit,
+                quantity_allocated=item.quantity_allocated,
+                quantity_distributed=item.quantity_distributed,
+                quantity_received=item.quantity_received,
+                quantity_missing=item.quantity_missing,
+                item_status=item.item_status,
+                notes=item.notes,
+            )
+            for item in dist.items
+        ]
+    )
+
+
+@app.post("/api/distributions/handover")
+def handover_distribution(
+    payload: DistributionHandoverRequest,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    beneficiary = db.get(Beneficiary, payload.beneficiary_id)
+    if not beneficiary:
+        raise HTTPException(status_code=404, detail="Beneficiary not found")
+
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="At least one supply item must be distributed")
+
+    now = datetime.now(timezone.utc)
+    dist_ref = f"DIST-{now.strftime('%Y%m%d')}-{uuid4().hex[:6].upper()}"
+
+    distribution = ReliefDistribution(
+        distribution_ref=dist_ref,
+        beneficiary_id=beneficiary.id,
+        officer_id=user.id,
+        centre_id=payload.centre_id,
+        status="Distributed – Awaiting Beneficiary Confirmation",
+        distributed_at=now,
+        officer_notes=payload.officer_notes,
+    )
+    db.add(distribution)
+    db.flush()
+
+    for item_in in payload.items:
+        alloc = None
+        if item_in.allocation_id:
+            alloc = db.get(SupplyAllocation, item_in.allocation_id)
+            if alloc and alloc.beneficiary_id != beneficiary.id:
+                raise HTTPException(status_code=400, detail="Allocation does not belong to this beneficiary")
+
+        item_name = item_in.item_name or (alloc.inventory.item_name if alloc and alloc.inventory else "Relief Item")
+        category = (alloc.inventory.category if alloc and alloc.inventory else None)
+        unit = item_in.unit or (alloc.unit if alloc else "units")
+        qty_allocated = item_in.quantity_allocated if item_in.quantity_allocated is not None else (alloc.quantity_allocated if alloc else item_in.quantity_distributed)
+
+        dist_item = ReliefDistributionItem(
+            distribution_id=distribution.id,
+            allocation_id=alloc.id if alloc else None,
+            inventory_id=alloc.inventory_id if alloc else item_in.inventory_id,
+            item_name=item_name,
+            category=category,
+            unit=unit,
+            quantity_allocated=qty_allocated,
+            quantity_distributed=item_in.quantity_distributed,
+            quantity_received=None,
+            quantity_missing=0,
+            item_status="Distributed – Awaiting Beneficiary Confirmation",
+            notes=item_in.notes,
+        )
+        db.add(dist_item)
+
+        if alloc:
+            alloc.status = "DISPATCHED"
+            alloc.dispatched_at = now
+
+    beneficiary.delivery_status = "DISPATCHED"
+
+    _audit(
+        db,
+        user,
+        "SUPPLIES_DISTRIBUTED",
+        "DISTRIBUTION",
+        distribution.distribution_ref,
+        f"Handed over {len(payload.items)} item(s) to {beneficiary.name} (Ref: {dist_ref})",
+        beneficiary.id,
+    )
+    if beneficiary.created_by_id:
+        _notify(
+            db,
+            beneficiary.created_by_id,
+            "Relief supplies handed over",
+            f"Relief supplies ({dist_ref}) have been distributed. Please check 'My Relief Distribution' on your dashboard to confirm receipt."
+        )
+
+    db.commit()
+    db.refresh(distribution)
+    return {
+        "message": "Supplies successfully marked as distributed. Awaiting beneficiary receipt confirmation.",
+        "distribution": _distribution_response(distribution)
+    }
+
+
+@app.post("/api/distributions/{distribution_id}/confirm")
+def confirm_distribution_receipt(
+    distribution_id: int,
+    payload: DistributionConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    distribution = db.get(ReliefDistribution, distribution_id)
+    if not distribution:
+        raise HTTPException(status_code=404, detail="Distribution record not found")
+
+    beneficiary = distribution.beneficiary
+    role = normalize_role(user.role)
+    if role == "BENEFICIARY":
+        if beneficiary.created_by_id != user.id:
+            raise HTTPException(status_code=403, detail="You can only confirm your own relief distribution")
+    elif role not in {"MAIN_ADMIN", "VERIFICATION_OFFICER"}:
+        raise HTTPException(status_code=403, detail="Not authorized to confirm distribution")
+
+    final_statuses = {
+        "Fully Received – Confirmed",
+        "Partially Received",
+        "Not Received",
+        "Issue Reported",
+    }
+    if distribution.status in final_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This distribution has already been confirmed as '{distribution.status}' and cannot be resubmitted."
+        )
+
+    action = payload.action.strip().upper()
+    valid_actions = {"CONFIRM_ALL", "PARTIALLY_RECEIVED", "NOT_RECEIVED", "REPORT_ISSUE"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Invalid action '{action}'. Must be one of {valid_actions}")
+
+    now = datetime.now(timezone.utc)
+    distribution.confirmed_at = now
+    distribution.beneficiary_feedback = payload.feedback
+
+    missing_map = {item.item_id: item for item in payload.missing_items}
+
+    if action == "CONFIRM_ALL":
+        distribution.status = "Fully Received – Confirmed"
+        for item in distribution.items:
+            item.quantity_received = item.quantity_distributed
+            item.quantity_missing = 0
+            item.item_status = "Fully Received – Confirmed"
+            if item.allocation:
+                item.allocation.status = "DELIVERED"
+                item.allocation.delivered_at = now
+                item.allocation.quantity_delivered = item.quantity_distributed
+                if item.allocation.inventory:
+                    item.allocation.inventory.quantity_delivered += item.quantity_distributed
+        beneficiary.delivery_status = "DELIVERED"
+
+    elif action == "PARTIALLY_RECEIVED":
+        distribution.status = "Partially Received"
+        missing_notes = []
+        for item in distribution.items:
+            confirm_info = missing_map.get(item.id)
+            if confirm_info:
+                received = min(confirm_info.quantity_received, item.quantity_distributed)
+                missing = max(0, item.quantity_distributed - received)
+                item.quantity_received = received
+                item.quantity_missing = missing
+                item.item_status = "Partially Received" if missing > 0 else "Fully Received – Confirmed"
+                if confirm_info.reason:
+                    item.notes = (item.notes or "") + f" [Beneficiary: {confirm_info.reason}]"
+                    missing_notes.append(f"{item.item_name}: received {received}/{item.quantity_distributed} ({confirm_info.reason})")
+            else:
+                item.quantity_received = item.quantity_distributed
+                item.quantity_missing = 0
+                item.item_status = "Fully Received – Confirmed"
+            if item.allocation:
+                item.allocation.quantity_delivered = item.quantity_received or 0
+                item.allocation.status = "PARTIAL" if item.quantity_missing else "DELIVERED"
+        if missing_notes:
+            distribution.discrepancy_details = "; ".join(missing_notes)
+        beneficiary.delivery_status = "PARTIALLY_DELIVERED"
+
+    elif action == "NOT_RECEIVED":
+        distribution.status = "Not Received"
+        for item in distribution.items:
+            item.quantity_received = 0
+            item.quantity_missing = item.quantity_distributed
+            item.item_status = "Not Received"
+        distribution.discrepancy_details = payload.feedback or "Beneficiary reported zero items received."
+        beneficiary.delivery_status = "UNDELIVERED"
+
+    elif action == "REPORT_ISSUE":
+        distribution.status = "Issue Reported"
+        distribution.discrepancy_details = payload.feedback or "Issue reported with received items."
+        for item in distribution.items:
+            confirm_info = missing_map.get(item.id)
+            if confirm_info:
+                item.quantity_received = min(confirm_info.quantity_received, item.quantity_distributed)
+                item.quantity_missing = max(0, item.quantity_distributed - item.quantity_received)
+                item.item_status = "Issue Reported"
+                if confirm_info.reason:
+                    item.notes = (item.notes or "") + f" [Issue: {confirm_info.reason}]"
+            else:
+                item.item_status = "Issue Reported"
+        beneficiary.delivery_status = "ISSUE_REPORTED"
+
+    confirmation_log = DistributionConfirmation(
+        distribution_id=distribution.id,
+        beneficiary_id=beneficiary.id,
+        user_id=user.id,
+        action=action,
+        status_applied=distribution.status,
+        feedback=payload.feedback,
+        missing_details={"items": [m.model_dump() for m in payload.missing_items]} if payload.missing_items else None,
+        created_at=now,
+    )
+    db.add(confirmation_log)
+
+    _audit(
+        db,
+        user,
+        "DISTRIBUTION_RECEIPT_CONFIRMED",
+        "DISTRIBUTION",
+        distribution.distribution_ref,
+        f"Beneficiary confirmed receipt as '{distribution.status}'. Feedback: {payload.feedback or 'None'}",
+        beneficiary.id,
+    )
+
+    if distribution.officer_id:
+        _notify(
+            db,
+            distribution.officer_id,
+            f"Receipt Confirmation: {distribution.distribution_ref}",
+            f"Beneficiary {beneficiary.name} marked distribution as '{distribution.status}'."
+        )
+
+    db.commit()
+    db.refresh(distribution)
+    return {
+        "message": f"Receipt confirmation recorded successfully as '{distribution.status}'.",
+        "distribution": _distribution_response(distribution)
+    }
+
+
+@app.get("/api/distributions/my-distributions")
+def get_my_distributions(
+    user: User = Depends(require_role("BENEFICIARY")),
+    db: Session = Depends(get_db),
+):
+    b_ids = db.scalars(select(Beneficiary.id).where(Beneficiary.created_by_id == user.id)).all()
+    if not b_ids:
+        return {"items": [], "total": 0}
+
+    distributions = db.scalars(
+        select(ReliefDistribution)
+        .where(ReliefDistribution.beneficiary_id.in_(b_ids))
+        .order_by(desc(ReliefDistribution.distributed_at))
+    ).all()
+
+    return {
+        "items": [_distribution_response(d) for d in distributions],
+        "total": len(distributions)
+    }
+
+
+@app.get("/api/distributions/beneficiary/{beneficiary_id}")
+def get_beneficiary_distributions(
+    beneficiary_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    beneficiary = db.get(Beneficiary, beneficiary_id)
+    if not beneficiary:
+        raise HTTPException(status_code=404, detail="Beneficiary not found")
+    _authorize_beneficiary_access(user, beneficiary)
+
+    distributions = db.scalars(
+        select(ReliefDistribution)
+        .where(ReliefDistribution.beneficiary_id == beneficiary_id)
+        .order_by(desc(ReliefDistribution.distributed_at))
+    ).all()
+
+    return {
+        "items": [_distribution_response(d) for d in distributions],
+        "total": len(distributions)
+    }
+
+
+@app.get("/api/distributions/tracking-summary")
+def get_distribution_tracking_summary(
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    total_allocated_beneficiaries = db.scalar(
+        select(func.count(func.distinct(SupplyAllocation.beneficiary_id)))
+    ) or 0
+
+    all_distributions = db.scalars(
+        select(ReliefDistribution).order_by(desc(ReliefDistribution.distributed_at))
+    ).all()
+
+    total_completed = sum(1 for d in all_distributions if d.status == "Fully Received – Confirmed")
+
+    confirmed_statuses = {"Fully Received – Confirmed", "Partially Received", "Not Received", "Issue Reported"}
+    beneficiaries_confirmed = len(set(d.beneficiary_id for d in all_distributions if d.status in confirmed_statuses))
+
+    pending_confirmations = sum(1 for d in all_distributions if d.status == "Distributed – Awaiting Beneficiary Confirmation")
+
+    partial_or_unsuccessful = sum(1 for d in all_distributions if d.status in {"Partially Received", "Not Received"})
+
+    reported_discrepancies = sum(1 for d in all_distributions if d.status == "Issue Reported" or (d.discrepancy_details and d.discrepancy_details.strip()))
+
+    return {
+        "total_beneficiaries_with_allocations": total_allocated_beneficiaries,
+        "total_distributions_completed": total_completed,
+        "beneficiaries_confirmed_receipt": beneficiaries_confirmed,
+        "pending_confirmations": pending_confirmations,
+        "partial_or_unsuccessful": partial_or_unsuccessful,
+        "reported_discrepancies": reported_discrepancies,
+        "distributions": [_distribution_response(d) for d in all_distributions[:100]]
+    }
 
 
 @app.exception_handler(HTTPException)

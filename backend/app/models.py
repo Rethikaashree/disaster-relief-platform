@@ -67,6 +67,7 @@ class Beneficiary(Base):
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="beneficiary")
     request_items: Mapped[list["ReliefRequestItem"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
     allocations: Mapped[list["SupplyAllocation"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
+    distributions: Mapped[list["ReliefDistribution"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -230,3 +231,65 @@ class SupplyAllocation(Base):
     centre: Mapped[DistributionCentre] = relationship(back_populates="allocations")
     inventory: Mapped[SupplyInventory] = relationship(back_populates="allocations")
     officer: Mapped[User] = relationship()
+
+
+class ReliefDistribution(Base):
+    __tablename__ = "relief_distributions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    distribution_ref: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    beneficiary_id: Mapped[int] = mapped_column(Integer, ForeignKey("beneficiaries.id"), nullable=False, index=True)
+    officer_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    centre_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("distribution_centres.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(
+        String(60),
+        nullable=False,
+        default="Distributed – Awaiting Beneficiary Confirmation"
+    )
+    distributed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    officer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    beneficiary_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discrepancy_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    beneficiary: Mapped["Beneficiary"] = relationship(back_populates="distributions")
+    officer: Mapped["User"] = relationship()
+    centre: Mapped["DistributionCentre | None"] = relationship()
+    items: Mapped[list["ReliefDistributionItem"]] = relationship(back_populates="distribution", cascade="all, delete-orphan")
+    confirmations: Mapped[list["DistributionConfirmation"]] = relationship(back_populates="distribution", cascade="all, delete-orphan")
+
+
+class ReliefDistributionItem(Base):
+    __tablename__ = "relief_distribution_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    distribution_id: Mapped[int] = mapped_column(Integer, ForeignKey("relief_distributions.id", ondelete="CASCADE"), nullable=False, index=True)
+    allocation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("supply_allocations.id"), nullable=True, index=True)
+    inventory_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("supply_inventories.id"), nullable=True)
+    item_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    unit: Mapped[str] = mapped_column(String(30), nullable=False, default="units")
+    quantity_allocated: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_distributed: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_received: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity_missing: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    item_status: Mapped[str] = mapped_column(String(60), nullable=False, default="Distributed – Awaiting Beneficiary Confirmation")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    distribution: Mapped["ReliefDistribution"] = relationship(back_populates="items")
+    allocation: Mapped["SupplyAllocation | None"] = relationship()
+
+
+class DistributionConfirmation(Base):
+    __tablename__ = "distribution_confirmations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    distribution_id: Mapped[int] = mapped_column(Integer, ForeignKey("relief_distributions.id", ondelete="CASCADE"), nullable=False, index=True)
+    beneficiary_id: Mapped[int] = mapped_column(Integer, ForeignKey("beneficiaries.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    status_applied: Mapped[str] = mapped_column(String(60), nullable=False)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    missing_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    distribution: Mapped["ReliefDistribution"] = relationship(back_populates="confirmations")
