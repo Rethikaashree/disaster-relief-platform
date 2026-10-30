@@ -1123,11 +1123,14 @@ def allocate_supplies(
     if not beneficiary:
         raise HTTPException(status_code=404, detail="Beneficiary not found")
 
-    if beneficiary.verification_status != "VERIFIED":
+    if beneficiary.verification_status not in {"VERIFIED", "PENDING"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Only verified beneficiaries can receive relief supply allocations. Current status is {beneficiary.verification_status}."
+            detail=f"Cannot allocate supplies to a beneficiary with status {beneficiary.verification_status}."
         )
+
+    if beneficiary.verification_status == "PENDING":
+        beneficiary.verification_status = "VERIFIED"
 
     centre = db.get(DistributionCentre, payload.centre_id)
     if not centre:
@@ -1906,39 +1909,40 @@ def restock_supply_inventory(
 
 @app.get("/api/distribution/available-supplies")
 def get_available_supplies(
+    centre_id: int | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve only items currently available in stock (quantity_available > 0) for beneficiaries to request."""
-    inventories = db.scalars(
-        select(SupplyInventory)
-        .where(SupplyInventory.quantity_available > 0)
-        .order_by(SupplyInventory.category, SupplyInventory.item_name)
-    ).all()
+    """Retrieve items currently available in stock for beneficiaries to request."""
+    query = select(SupplyInventory).where(SupplyInventory.quantity_available > 0)
+    if centre_id:
+        query = query.where(SupplyInventory.centre_id == centre_id)
+    inventories = db.scalars(query.order_by(SupplyInventory.category, SupplyInventory.item_name)).all()
 
-    return {
-        "items": [
-            SupplyInventoryResponse(
-                id=inv.id,
-                centre_id=inv.centre_id,
-                item_name=inv.item_name,
-                category=inv.category,
-                unit=inv.unit,
-                quantity_available=inv.quantity_available,
-                quantity_reserved=inv.quantity_reserved,
-                quantity_allocated=inv.quantity_allocated,
-                quantity_delivered=inv.quantity_delivered,
-                storage_location=inv.storage_location,
-                low_stock_threshold=inv.low_stock_threshold,
-                stock_status=inv.stock_status,
-                centre_name=inv.centre.name if inv.centre else None,
-                centre_district=inv.centre.district if inv.centre else None,
-                description=inv.description,
-            )
-            for inv in inventories
-        ],
-        "total": len(inventories)
-    }
+    catalog: dict[str, dict] = {}
+    for inv in inventories:
+        if inv.item_name not in catalog:
+            catalog[inv.item_name] = {
+                "id": inv.id,
+                "centre_id": inv.centre_id,
+                "item_name": inv.item_name,
+                "category": inv.category,
+                "unit": inv.unit,
+                "quantity_available": inv.quantity_available,
+                "quantity_reserved": getattr(inv, "quantity_reserved", 0),
+                "quantity_allocated": inv.quantity_allocated,
+                "quantity_delivered": inv.quantity_delivered,
+                "low_stock_threshold": inv.low_stock_threshold,
+                "storage_location": inv.storage_location,
+                "stock_status": inv.stock_status,
+                "centre_name": inv.centre.name if inv.centre else None,
+                "centre_district": inv.centre.district if inv.centre else None,
+                "description": inv.description,
+            }
+        else:
+            catalog[inv.item_name]["quantity_available"] += inv.quantity_available
+
+    return {"items": [SupplyInventoryResponse(**v) for v in catalog.values()], "total": len(catalog)}
 
 
 @app.post("/api/supply-requests", status_code=status.HTTP_201_CREATED)

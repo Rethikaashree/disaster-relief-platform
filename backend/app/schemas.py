@@ -182,9 +182,9 @@ class SupplyInventoryResponse(BaseModel):
     category: str
     unit: str
     quantity_available: int
-    quantity_reserved: int
-    quantity_allocated: int
-    quantity_delivered: int
+    quantity_reserved: int = 0
+    quantity_allocated: int = 0
+    quantity_delivered: int = 0
     storage_location: str
     low_stock_threshold: int
     stock_status: str

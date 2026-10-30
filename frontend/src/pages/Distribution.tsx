@@ -648,6 +648,26 @@ export function Distribution() {
                           {inv.stock_status}
                         </span>
                       </td>
+                      <td>
+                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="secondary-button btn-sm"
+                            onClick={() => openRestockModal(inv, "restock")}
+                            title="Restock inventory"
+                          >
+                            <PlusCircle size={14} /> Restock
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button btn-sm"
+                            onClick={() => openRestockModal(inv, "edit")}
+                            title="Edit details"
+                          >
+                            <Edit size={14} /> Edit
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 ) : (
@@ -1056,268 +1076,70 @@ export function Distribution() {
 
       {/* MODAL: ADD NEW RELIEF SUPPLY */}
       {showAddModal && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#ffffff", borderRadius: "10px", maxWidth: "520px", width: "100%", padding: "24px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Add New Relief Supply Item</h3>
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card md">
+            <div className="modal-header">
+              <div className="modal-header-content">
+                <h2>Add New Relief Supply Item</h2>
+                <p>Register a new aid inventory item and assign initial quantities to a regional hub.</p>
+              </div>
               <button
                 type="button"
+                className="modal-close-btn"
                 onClick={() => setShowAddModal(false)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+                title="Close modal"
+                aria-label="Close dialog"
               >
                 <XCircle size={20} />
               </button>
             </div>
 
-            {modalSuccess && <div className="alert success" style={{ marginBottom: "12px" }}>{modalSuccess}</div>}
-            {modalError && <div className="alert danger" style={{ marginBottom: "12px" }}>{modalError}</div>}
+            <div className="modal-body">
+              {modalSuccess && <div className="alert success" style={{ marginBottom: "14px" }}>{modalSuccess}</div>}
+              {modalError && <div className="alert danger" style={{ marginBottom: "14px" }}>{modalError}</div>}
 
-            <form onSubmit={handleCreateInventory} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                  Distribution Centre:
-                </label>
-                <select
-                  value={selectedCentre ? selectedCentre.id : ""}
-                  onChange={(e) => {
-                    const c = centres.find((item) => item.id === Number(e.target.value));
-                    if (c) setSelectedCentre(c);
-                  }}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                >
-                  {centres.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.district})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                  Supply Item Name *:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Baby Formula Milk (400g), ORS Sachets..."
-                  value={newInvForm.item_name}
-                  onChange={(e) => setNewInvForm({ ...newInvForm, item_name: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  required
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <form id="addSupplyForm" onSubmit={handleCreateInventory} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Category:
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Distribution Centre:
                   </label>
                   <select
-                    value={newInvForm.category}
-                    onChange={(e) => setNewInvForm({ ...newInvForm, category: e.target.value })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    value={selectedCentre ? selectedCentre.id : ""}
+                    onChange={(e) => {
+                      const c = centres.find((item) => item.id === Number(e.target.value));
+                      if (c) setSelectedCentre(c);
+                    }}
+                    style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
                   >
-                    {CATEGORIES.filter((c) => c !== "All").map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
+                    {centres.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.district})</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Unit of Measure:
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Supply Item Name *:
                   </label>
                   <input
                     type="text"
-                    placeholder="packets, bottles, litres, pieces, kits..."
-                    value={newInvForm.unit}
-                    onChange={(e) => setNewInvForm({ ...newInvForm, unit: e.target.value })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Initial Stock Quantity:
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={newInvForm.quantity_available}
-                    onChange={(e) => setNewInvForm({ ...newInvForm, quantity_available: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    placeholder="e.g. Baby Formula Milk (400g), ORS Sachets..."
+                    value={newInvForm.item_name}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, item_name: e.target.value })}
+                    style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
                     required
                   />
                 </div>
 
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Low Stock Threshold:
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={newInvForm.low_stock_threshold}
-                    onChange={(e) => setNewInvForm({ ...newInvForm, low_stock_threshold: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                  Storage Bay / Location:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Bay 2, Shelf B, Cold Room..."
-                  value={newInvForm.storage_location}
-                  onChange={(e) => setNewInvForm({ ...newInvForm, storage_location: e.target.value })}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                  Description / Specification (optional):
-                </label>
-                <textarea
-                  placeholder="Detailed specifications for beneficiaries and warehouse staff..."
-                  value={newInvForm.description}
-                  onChange={(e) => setNewInvForm({ ...newInvForm, description: e.target.value })}
-                  rows={2}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setShowAddModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="primary-button"
-                  disabled={modalLoading}
-                >
-                  {modalLoading ? "Saving..." : "Add to Inventory"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: RESTOCK / EDIT SUPPLY */}
-      {showRestockModal && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div style={{ background: "#ffffff", borderRadius: "10px", maxWidth: "480px", width: "100%", padding: "24px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
-                  {modalMode === "restock" ? `Restock: ${showRestockModal.item_name}` : `Edit: ${showRestockModal.item_name}`}
-                </h3>
-                <small style={{ color: "#64748b" }}>
-                  Current Stock: <strong>{showRestockModal.quantity_available} {showRestockModal.unit}</strong> ({showRestockModal.stock_status})
-                </small>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowRestockModal(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
-              >
-                <XCircle size={20} />
-              </button>
-            </div>
-
-            {/* MODE SWITCHER */}
-            <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
-              <button
-                type="button"
-                className={modalMode === "restock" ? "primary-button" : "secondary-button"}
-                onClick={() => setModalMode("restock")}
-                style={{ flex: 1, fontSize: "12px", padding: "6px" }}
-              >
-                <PlusCircle size={13} /> Add Stock (Restock)
-              </button>
-              <button
-                type="button"
-                className={modalMode === "edit" ? "primary-button" : "secondary-button"}
-                onClick={() => setModalMode("edit")}
-                style={{ flex: 1, fontSize: "12px", padding: "6px" }}
-              >
-                <Edit size={13} /> Edit Item Details
-              </button>
-            </div>
-
-            {modalSuccess && <div className="alert success" style={{ marginBottom: "12px" }}>{modalSuccess}</div>}
-            {modalError && <div className="alert danger" style={{ marginBottom: "12px" }}>{modalError}</div>}
-
-            {modalMode === "restock" ? (
-              <form onSubmit={handleRestockSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Quantity Arrived (+{showRestockModal.unit}):
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={restockQty}
-                    onChange={(e) => setRestockQty(Number(e.target.value))}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Source / Donation Notes (optional):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. NGO shipment from Red Cross, corporate donation..."
-                    value={restockNotes}
-                    onChange={(e) => setRestockNotes(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                  <button type="button" className="secondary-button" onClick={() => setShowRestockModal(null)}>Cancel</button>
-                  <button type="submit" className="primary-button" disabled={modalLoading}>
-                    {modalLoading ? "Updating..." : `Confirm Restock (+${restockQty})`}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleEditInvSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Item Name:
-                  </label>
-                  <input
-                    type="text"
-                    value={editInvForm.item_name}
-                    onChange={(e) => setEditInvForm({ ...editInvForm, item_name: e.target.value })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
                       Category:
                     </label>
                     <select
-                      value={editInvForm.category}
-                      onChange={(e) => setEditInvForm({ ...editInvForm, category: e.target.value })}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      value={newInvForm.category}
+                      onChange={(e) => setNewInvForm({ ...newInvForm, category: e.target.value })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
                     >
                       {CATEGORIES.filter((c) => c !== "All").map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -1326,65 +1148,279 @@ export function Distribution() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                      Unit:
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Unit of Measure:
                     </label>
                     <input
                       type="text"
-                      value={editInvForm.unit}
-                      onChange={(e) => setEditInvForm({ ...editInvForm, unit: e.target.value })}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      placeholder="packets, bottles, litres, pieces, kits..."
+                      value={newInvForm.unit}
+                      onChange={(e) => setNewInvForm({ ...newInvForm, unit: e.target.value })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Initial Stock Quantity:
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={newInvForm.quantity_available}
+                      onChange={(e) => setNewInvForm({ ...newInvForm, quantity_available: Number(e.target.value) })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Low Stock Threshold:
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newInvForm.low_stock_threshold}
+                      onChange={(e) => setNewInvForm({ ...newInvForm, low_stock_threshold: Number(e.target.value) })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Low Stock Threshold:
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={editInvForm.low_stock_threshold}
-                    onChange={(e) => setEditInvForm({ ...editInvForm, low_stock_threshold: Number(e.target.value) })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Storage Location:
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Storage Bay / Location:
                   </label>
                   <input
                     type="text"
-                    value={editInvForm.storage_location}
-                    onChange={(e) => setEditInvForm({ ...editInvForm, storage_location: e.target.value })}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    placeholder="e.g. Bay 2, Shelf B, Cold Room..."
+                    value={newInvForm.storage_location}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, storage_location: e.target.value })}
+                    style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Description:
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Description / Specification (optional):
                   </label>
                   <textarea
-                    value={editInvForm.description}
-                    onChange={(e) => setEditInvForm({ ...editInvForm, description: e.target.value })}
+                    placeholder="Detailed specifications for beneficiaries and warehouse staff..."
+                    value={newInvForm.description}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, description: e.target.value })}
                     rows={2}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px", resize: "vertical" }}
                   />
                 </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
-                  <button type="button" className="secondary-button" onClick={() => setShowRestockModal(null)}>Cancel</button>
-                  <button type="submit" className="primary-button" disabled={modalLoading}>
-                    {modalLoading ? "Saving..." : "Save Changes"}
-                  </button>
-                </div>
               </form>
-            )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="secondary-button btn-md"
+                onClick={() => setShowAddModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="addSupplyForm"
+                className="primary-button btn-md"
+                disabled={modalLoading}
+              >
+                {modalLoading ? "Saving..." : "Add to Inventory"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESTOCK / EDIT SUPPLY */}
+      {showRestockModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card sm">
+            <div className="modal-header">
+              <div className="modal-header-content">
+                <h2>
+                  {modalMode === "restock" ? `Restock: ${showRestockModal.item_name}` : `Edit: ${showRestockModal.item_name}`}
+                </h2>
+                <p>
+                  Current Stock: <strong>{showRestockModal.quantity_available} {showRestockModal.unit}</strong> ({showRestockModal.stock_status})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setShowRestockModal(null)}
+                title="Close modal"
+                aria-label="Close dialog"
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {/* MODE SWITCHER */}
+              <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+                <button
+                  type="button"
+                  className={modalMode === "restock" ? "primary-button btn-sm" : "secondary-button btn-sm"}
+                  onClick={() => setModalMode("restock")}
+                  style={{ flex: 1 }}
+                >
+                  <PlusCircle size={14} /> Add Stock (Restock)
+                </button>
+                <button
+                  type="button"
+                  className={modalMode === "edit" ? "primary-button btn-sm" : "secondary-button btn-sm"}
+                  onClick={() => setModalMode("edit")}
+                  style={{ flex: 1 }}
+                >
+                  <Edit size={14} /> Edit Item Details
+                </button>
+              </div>
+
+              {modalSuccess && <div className="alert success" style={{ marginBottom: "14px" }}>{modalSuccess}</div>}
+              {modalError && <div className="alert danger" style={{ marginBottom: "14px" }}>{modalError}</div>}
+
+              {modalMode === "restock" ? (
+                <form id="restockForm" onSubmit={handleRestockSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Quantity Arrived (+{showRestockModal.unit}):
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={restockQty}
+                      onChange={(e) => setRestockQty(Number(e.target.value))}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Source / Donation Notes (optional):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. NGO shipment from Red Cross, corporate donation..."
+                      value={restockNotes}
+                      onChange={(e) => setRestockNotes(e.target.value)}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                    />
+                  </div>
+                </form>
+              ) : (
+                <form id="editForm" onSubmit={handleEditInvSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Item Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={editInvForm.item_name}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, item_name: e.target.value })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                        Category:
+                      </label>
+                      <select
+                        value={editInvForm.category}
+                        onChange={(e) => setEditInvForm({ ...editInvForm, category: e.target.value })}
+                        style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      >
+                        {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                        Unit:
+                      </label>
+                      <input
+                        type="text"
+                        value={editInvForm.unit}
+                        onChange={(e) => setEditInvForm({ ...editInvForm, unit: e.target.value })}
+                        style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Low Stock Threshold:
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editInvForm.low_stock_threshold}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, low_stock_threshold: Number(e.target.value) })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Storage Location:
+                    </label>
+                    <input
+                      type="text"
+                      value={editInvForm.storage_location}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, storage_location: e.target.value })}
+                      style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                      Description:
+                    </label>
+                    <textarea
+                      value={editInvForm.description}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, description: e.target.value })}
+                      rows={2}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px", resize: "vertical" }}
+                    />
+                  </div>
+                </form>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="secondary-button btn-md"
+                onClick={() => setShowRestockModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form={modalMode === "restock" ? "restockForm" : "editForm"}
+                className="primary-button btn-md"
+                disabled={modalLoading}
+              >
+                {modalLoading ? "Saving..." : modalMode === "restock" ? `Confirm Restock (+${restockQty})` : "Save Changes"}
+              </button>
+            </div>
           </div>
         </div>
       )}

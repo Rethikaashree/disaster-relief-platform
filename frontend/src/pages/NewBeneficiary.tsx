@@ -113,7 +113,7 @@ export function NewBeneficiary() {
             {getUser()?.email && (getUser()!.email.includes("demo") || getUser()!.email.includes("example.com")) && (
             <button
               type="button"
-              className="secondary-button"
+              className="secondary-button btn-sm"
               style={{ marginLeft: "auto" }}
               onClick={() => {
                 const districts = ["Cuddalore", "Nagapattinam", "Thanjavur", "Chennai", "Tiruvallur", "Madurai"];
@@ -145,7 +145,7 @@ export function NewBeneficiary() {
                 setMessage("Generated safe fictional demonstration inputs. (DEMO DATA)");
               }}
             >
-              GENERATE RANDOM INPUTS
+              Generate Sample Inputs
             </button>
             )}
           </div>

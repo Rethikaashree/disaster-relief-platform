@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Search } from "lucide-react";
 import { beneficiaryApi, normalizeListResponse } from "../api";
 import type { Beneficiary } from "../types";
@@ -57,19 +58,25 @@ export function DuplicateFlags() {
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Score</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5}>Loading flags...</td>
+                  <td colSpan={6}>Loading flags...</td>
                 </tr>
               ) : filtered.length ? (
                 filtered.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <strong>{item.name}</strong>
-                      <small>{item.phone || "No phone"}</small>
+                      <div className="person-cell">
+                        <span>{item.name.slice(0, 1)}</span>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <small>{item.phone || "No phone"}</small>
+                        </div>
+                      </div>
                     </td>
                     <td>
                       <code>{item.application_id}</code>
@@ -85,11 +92,16 @@ export function DuplicateFlags() {
                         {item.verification_score}/100
                       </span>
                     </td>
+                    <td>
+                      <Link to={`/review/${item.id}`} className="table-action">
+                        Review
+                      </Link>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <div className="empty-state">
                       <CheckCircle2 size={32} />
                       <strong>No duplicate flags</strong>

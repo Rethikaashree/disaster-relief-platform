@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { KeyRound, UserPlus, UserRoundCheck, UserRoundX } from "lucide-react";
+import { KeyRound, UserPlus, UserRoundCheck, UserRoundX, XCircle } from "lucide-react";
 import { officerApi } from "../api";
 
 type Officer = {
@@ -135,68 +135,74 @@ export function ManageOfficers() {
         </div>
       )}
       {resetTarget && (
-        <form
-          className="form-card officer-create-form"
-          onSubmit={resetPassword}
-        >
-          <div className="form-section">
-            <div className="section-title">
-              <span>
-                <KeyRound size={16} />
-              </span>
-              <div>
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card sm">
+            <div className="modal-header">
+              <div className="modal-header-content">
                 <h2>Reset password for {resetTarget.name}</h2>
-                <p>
-                  The officer will be required to choose a new password at next
-                  sign in.
-                </p>
+                <p>The officer will be required to choose a new password at next sign in.</p>
               </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setResetTarget(null)}
+                title="Close dialog"
+                aria-label="Close dialog"
+              >
+                <XCircle size={20} />
+              </button>
             </div>
-            <div className="form-grid">
-              <label>
-                Temporary password
-                <input
-                  required
-                  minLength={12}
-                  type="password"
-                  autoComplete="new-password"
-                  value={resetForm.password}
-                  onChange={(e) =>
-                    setResetForm({ ...resetForm, password: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Confirm password
-                <input
-                  required
-                  minLength={12}
-                  type="password"
-                  autoComplete="new-password"
-                  value={resetForm.confirm_password}
-                  onChange={(e) =>
-                    setResetForm({
-                      ...resetForm,
-                      confirm_password: e.target.value,
-                    })
-                  }
-                />
-              </label>
+            <div className="modal-body">
+              <form id="resetOfficerForm" onSubmit={resetPassword} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Temporary password (min 12 characters)
+                  </label>
+                  <input
+                    required
+                    minLength={12}
+                    type="password"
+                    autoComplete="new-password"
+                    value={resetForm.password}
+                    onChange={(e) => setResetForm({ ...resetForm, password: e.target.value })}
+                    style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--ink)", display: "block", marginBottom: "6px" }}>
+                    Confirm password
+                  </label>
+                  <input
+                    required
+                    minLength={12}
+                    type="password"
+                    autoComplete="new-password"
+                    value={resetForm.confirm_password}
+                    onChange={(e) => setResetForm({ ...resetForm, confirm_password: e.target.value })}
+                    style={{ width: "100%", height: "38px", padding: "0 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px" }}
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="secondary-button btn-md"
+                onClick={() => setResetTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="resetOfficerForm"
+                className="primary-button btn-md"
+                disabled={loading}
+              >
+                {loading ? "Resetting..." : "Reset password"}
+              </button>
             </div>
           </div>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setResetTarget(null)}
-            >
-              Cancel
-            </button>
-            <button className="primary-button" disabled={loading}>
-              {loading ? "Resetting..." : "Reset password"}
-            </button>
-          </div>
-        </form>
+        </div>
       )}
       {showForm && (
         <form className="form-card officer-create-form" onSubmit={create}>
@@ -312,22 +318,22 @@ export function ManageOfficers() {
                       </span>
                     </td>
                     <td>
-                      <div className="officer-row-actions">
+                      <div className="officer-row-actions" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                         <button
-                          className="secondary-button"
+                          className="secondary-button btn-sm"
                           onClick={() => void toggleStatus(officer)}
                         >
                           {officer.status === "ACTIVE" ? (
-                            <UserRoundX size={16} />
+                            <UserRoundX size={15} />
                           ) : (
-                            <UserRoundCheck size={16} />
+                            <UserRoundCheck size={15} />
                           )}
                           {officer.status === "ACTIVE"
                             ? "Deactivate"
                             : "Activate"}
                         </button>
                         <button
-                          className="secondary-button"
+                          className="secondary-button btn-sm"
                           onClick={() => {
                             setResetTarget(officer);
                             setResetForm({
@@ -336,7 +342,7 @@ export function ManageOfficers() {
                             });
                           }}
                         >
-                          <KeyRound size={16} />
+                          <KeyRound size={15} />
                           Reset password
                         </button>
                       </div>

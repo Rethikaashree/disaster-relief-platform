@@ -170,7 +170,7 @@ export function Dashboard() {
         ))}
       </section>
       {data.total_available_stock !== undefined && (
-        <section className="metric-grid" style={{ marginTop: "1rem" }}>
+        <section className="metric-grid four" style={{ marginTop: "1rem" }}>
           <article className="metric-card">
             <div className="metric-icon blue">
               <Warehouse />

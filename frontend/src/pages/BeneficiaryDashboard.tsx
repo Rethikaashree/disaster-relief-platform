@@ -85,11 +85,27 @@ export function BeneficiaryDashboard() {
   const [scanMessage, setScanMessage] = useState("");
   const [ocr, setOcr] = useState<Record<string, string> | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // Supplies attached to application form
+  const [applicationSupplies, setApplicationSupplies] = useState<
+    Array<{ name: string; category: string; unit: string; qty: number; selected: boolean }>
+  >([
+    { name: "Drinking Water Cans (20L)", category: "Water", unit: "cans", qty: 4, selected: true },
+    { name: "Ready-to-Eat Meal Packets", category: "Food", unit: "packets", qty: 12, selected: true },
+    { name: "Blankets & Bedsheets", category: "Shelter & Bedding", unit: "pieces", qty: 4, selected: true },
+    { name: "First-Aid Emergency Kits", category: "Medical", unit: "kits", qty: 1, selected: false },
+    { name: "Family Hygiene Kits", category: "Hygiene", unit: "kits", qty: 1, selected: true },
+    { name: "Rice, Wheat & Staple Grains (10kg)", category: "Food", unit: "bags", qty: 1, selected: false },
+    { name: "Baby-Care & Infant Supplies", category: "Baby Care", unit: "kits", qty: 1, selected: false },
+    { name: "Mosquito Nets", category: "Shelter & Bedding", unit: "pieces", qty: 2, selected: false },
+  ]);
+
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [availableSupplies, setAvailableSupplies] = useState<SupplyInventory[]>([]);
   const [supplyRequests, setSupplyRequests] = useState<BeneficiarySupplyRequest[]>([]);
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
+  const [supplySearch, setSupplySearch] = useState("");
+  const [supplyCategory, setSupplyCategory] = useState("ALL");
   const [requestNotes, setRequestNotes] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [requestSuccessMsg, setRequestSuccessMsg] = useState("");
@@ -176,8 +192,21 @@ export function BeneficiaryDashboard() {
       ]);
       setApplications(appRes.data.items);
       setDistributions(distRes.data.items || []);
-      setAvailableSupplies(availRes.data.items || []);
+      const avail = availRes.data.items || [];
+      setAvailableSupplies(avail);
       setSupplyRequests(reqRes.data.items || []);
+      setSelectedItems((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        const initial: Record<number, number> = {};
+        avail.forEach((item: SupplyInventory) => {
+          const name = item.item_name.toLowerCase();
+          if (name.includes("water can")) initial[item.id] = 4;
+          else if (name.includes("meal")) initial[item.id] = 12;
+          else if (name.includes("blanket")) initial[item.id] = 4;
+          else if (name.includes("hygiene")) initial[item.id] = 1;
+        });
+        return initial;
+      });
     } catch (err) {
       setError(apiError(err));
     } finally {
@@ -244,6 +273,18 @@ export function BeneficiaryDashboard() {
     } finally {
       setSubmittingRequest(false);
     }
+  };
+
+  const defaultQtyForItem = (item: SupplyInventory | { item_name: string }) => {
+    const name = item.item_name.toLowerCase();
+    if (name.includes("water can")) return 4;
+    if (name.includes("water bottle")) return 6;
+    if (name.includes("meal")) return 12;
+    if (name.includes("blanket")) return 4;
+    if (name.includes("hygiene")) return 1;
+    if (name.includes("grain") || name.includes("rice")) return 1;
+    if (name.includes("mosquito")) return 2;
+    return 1;
   };
 
   const toggleSelectItem = (invId: number, defaultQty = 1) => {
@@ -320,6 +361,28 @@ export function BeneficiaryDashboard() {
     setMessage("");
     let uploadedForManualReview = false;
     try {
+      let selectedSupplies: Array<{ item_name: string; category: string; quantity_requested: number; unit: string }> = [];
+      if (availableSupplies.length > 0) {
+        selectedSupplies = availableSupplies
+          .filter((it) => (selectedItems[it.id] || 0) > 0)
+          .map((it) => ({
+            item_name: it.item_name,
+            category: it.category || "General",
+            quantity_requested: selectedItems[it.id],
+            unit: it.unit,
+          }));
+      }
+      if (selectedSupplies.length === 0) {
+        selectedSupplies = applicationSupplies
+          .filter((it) => it.selected && it.qty > 0)
+          .map((it) => ({
+            item_name: it.name,
+            category: it.category,
+            quantity_requested: it.qty,
+            unit: it.unit,
+          }));
+      }
+
       const payload = {
         ...form,
         aadhaar_identifier: (form.aadhaar_identifier || "").trim() || null,
@@ -327,6 +390,7 @@ export function BeneficiaryDashboard() {
         date_affected: form.date_affected || null,
         family_size: Number(form.family_size),
         number_of_dependents: Number(form.number_of_dependents),
+        requested_supplies: selectedSupplies.length > 0 ? selectedSupplies : undefined,
       };
       const { data } = await beneficiaryApi.create(payload);
       const applicationId = data.beneficiary.id as number;
@@ -790,6 +854,214 @@ export function BeneficiaryDashboard() {
               </label>
             </div>
           </section>
+          <section className="form-section">
+            <div className="section-title">
+              <span>04</span>
+              <div>
+                <h2>Requested Relief Supplies</h2>
+                <p>
+                  Select currently available emergency supplies, specify required quantities, and submit for officer approval.
+                </p>
+              </div>
+            </div>
+
+            {/* SEARCH AND CATEGORY FILTER BAR */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", margin: "14px 0 16px" }}>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
+                  <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+                  <input
+                    type="text"
+                    placeholder="Search available supplies by name or category..."
+                    value={supplySearch}
+                    onChange={(e) => setSupplySearch(e.target.value)}
+                    style={{ width: "100%", padding: "9px 12px 9px 36px", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "13px" }}
+                  />
+                </div>
+                {supplySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSupplySearch("")}
+                    className="secondary-button"
+                    style={{ padding: "7px 12px", fontSize: "12px" }}
+                  >
+                    Clear Search
+                  </button>
+                )}
+              </div>
+
+              {/* CATEGORY CHIPS */}
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                {["ALL", "Water", "Food", "Shelter & Bedding", "Medical", "Hygiene", "Baby Care", "Clothing", "Emergency Equipment"].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSupplyCategory(cat)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "16px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      border: supplyCategory === cat ? "1.5px solid #0d9488" : "1px solid #cbd5e1",
+                      background: supplyCategory === cat ? "#0d9488" : "#ffffff",
+                      color: supplyCategory === cat ? "#ffffff" : "#475569",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* SELECTION SUMMARY BADGE STRIP */}
+            {Object.values(selectedItems).filter((q) => q > 0).length > 0 && (
+              <div style={{
+                background: "#f0fdfa",
+                border: "1.5px solid #99f6e4",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                marginBottom: "14px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "8px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Package size={17} color="#0d9488" />
+                  <strong style={{ fontSize: "13px", color: "#0f766e" }}>
+                    {Object.values(selectedItems).filter((q) => q > 0).length} emergency item{Object.values(selectedItems).filter((q) => q > 0).length > 1 ? "s" : ""} selected for this application
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItems({})}
+                  style={{ background: "none", border: "none", color: "#dc2626", fontSize: "12px", cursor: "pointer", fontWeight: 600, textDecoration: "underline" }}
+                >
+                  Clear Selection
+                </button>
+              </div>
+            )}
+
+            {/* SUPPLIES CARDS GRID */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px" }}>
+              {(availableSupplies.length > 0
+                ? availableSupplies
+                : applicationSupplies.map((a, i) => ({
+                    id: i + 1,
+                    item_name: a.name,
+                    category: a.category,
+                    unit: a.unit,
+                    quantity_available: 100,
+                    centre_id: 1,
+                  }))
+              )
+                .filter((item) => {
+                  const matchesSearch =
+                    !supplySearch.trim() ||
+                    item.item_name.toLowerCase().includes(supplySearch.toLowerCase()) ||
+                    (item.category && item.category.toLowerCase().includes(supplySearch.toLowerCase()));
+                  const matchesCategory =
+                    supplyCategory === "ALL" ||
+                    (item.category && item.category.toLowerCase() === supplyCategory.toLowerCase());
+                  return matchesSearch && matchesCategory;
+                })
+                .map((item) => {
+                  const isSelected = !!selectedItems[item.id];
+                  const currentQty = selectedItems[item.id] || defaultQtyForItem(item);
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        border: isSelected ? "2px solid #0d9488" : "1px solid #cbd5e1",
+                        borderRadius: "10px",
+                        padding: "14px",
+                        background: isSelected ? "#f0fdfa" : "#ffffff",
+                        boxShadow: isSelected ? "0 2px 6px rgba(13, 148, 136, 0.12)" : "0 1px 3px rgba(0,0,0,0.03)",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        minHeight: "145px",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", minHeight: "36px" }}>
+                          <strong style={{ fontSize: "13.5px", color: "#0f172a", lineHeight: 1.35 }}>{item.item_name}</strong>
+                          {item.category && (
+                            <span
+                              className="status-badge"
+                              style={{
+                                fontSize: "10.5px",
+                                padding: "2px 7px",
+                                borderRadius: "12px",
+                                background: "#e0f2fe",
+                                color: "#0369a1",
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {item.category}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "11.5px", color: "#0f766e", fontWeight: 600, marginTop: "6px" }}>
+                          Available: {item.quantity_available} {item.unit}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", paddingTop: "8px", borderTop: "1px dashed #e2e8f0" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: 600, color: "#334155", cursor: "pointer", userSelect: "none" }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectItem(item.id, defaultQtyForItem(item))}
+                          />
+                          Select Item
+                        </label>
+
+                        {isSelected ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <span style={{ fontSize: "11.5px", color: "#64748b" }}>Qty:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={item.quantity_available}
+                              value={currentQty}
+                              onChange={(e) => setItemQty(item.id, Number(e.target.value), item.quantity_available)}
+                              style={{
+                                width: "65px",
+                                padding: "3px 6px",
+                                borderRadius: "6px",
+                                border: "1.5px solid #0d9488",
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                textAlign: "center",
+                                background: "#ffffff",
+                              }}
+                            />
+                            <span style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 500 }}>{item.unit}</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => toggleSelectItem(item.id, defaultQtyForItem(item))}
+                            style={{ padding: "4px 8px", fontSize: "11.5px", borderRadius: "6px" }}
+                          >
+                            + Add to Request
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </section>
           {error && (
             <div role="alert" className="alert danger role-form-alert">
               {error}
@@ -811,179 +1083,152 @@ export function BeneficiaryDashboard() {
       )}
       {/* RECEIPT CONFIRMATION MODAL */}
       {confirmModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.65)",
-            backdropFilter: "blur(4px)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "1rem",
-          }}
-        >
-          <div
-            className="panel"
-            style={{
-              maxWidth: "600px",
-              width: "100%",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
-              border: "1px solid var(--border, #cbd5e1)",
-            }}
-          >
-            <div className="panel-header" style={{ marginBottom: "1rem" }}>
-              <div>
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card md">
+            <div className="modal-header">
+              <div className="modal-header-content">
                 <h2>
                   {confirmModal.action === "CONFIRM_ALL" && "Confirm All Supplies Received"}
                   {confirmModal.action === "PARTIALLY_RECEIVED" && "Confirm Partial Supply Receipt"}
                   {confirmModal.action === "NOT_RECEIVED" && "Report Supplies Not Received"}
                   {confirmModal.action === "REPORT_ISSUE" && "Report Missing or Incorrect Items"}
                 </h2>
-                <p>Distribution Ref: <code>{confirmModal.dist.distribution_ref}</code></p>
+                <p>Distribution Ref: <code style={{ color: "var(--teal-dark)", fontWeight: 700 }}>{confirmModal.dist.distribution_ref}</code></p>
               </div>
               <button
                 type="button"
-                className="secondary-button"
+                className="modal-close-btn"
                 onClick={() => setConfirmModal(null)}
-                style={{ padding: "0.3rem 0.6rem" }}
+                title="Close modal"
+                aria-label="Close dialog"
               >
-                ✕
+                <XCircle size={20} />
               </button>
             </div>
 
-            <div style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#64748b" }}>
-              {confirmModal.action === "CONFIRM_ALL" && (
-                <p>
-                  You are confirming that you have received all distributed quantities in good order. This will officially close the handover record.
-                </p>
+            <div className="modal-body">
+              <div style={{ marginBottom: "14px", fontSize: "13px", color: "var(--muted)", lineHeight: 1.45 }}>
+                {confirmModal.action === "CONFIRM_ALL" && (
+                  <p style={{ margin: 0 }}>
+                    You are confirming that you have received all distributed quantities in good order. This will officially close the handover record.
+                  </p>
+                )}
+                {confirmModal.action === "PARTIALLY_RECEIVED" && (
+                  <p style={{ margin: 0 }}>
+                    Please specify the actual quantity you received and any missing quantity for each item below:
+                  </p>
+                )}
+                {confirmModal.action === "NOT_RECEIVED" && (
+                  <p style={{ margin: 0, color: "var(--red)", fontWeight: 600 }}>
+                    You are reporting that you have not received the distributed packages. This discrepancy will be immediately flagged to the relief officer.
+                  </p>
+                )}
+                {confirmModal.action === "REPORT_ISSUE" && (
+                  <p style={{ margin: 0, color: "var(--amber)", fontWeight: 600 }}>
+                    Please detail any missing, damaged, or incorrect items so relief officers can investigate and dispatch replacements.
+                  </p>
+                )}
+              </div>
+
+              {/* ITEM BREAKDOWN */}
+              {(confirmModal.action === "PARTIALLY_RECEIVED" ||
+                confirmModal.action === "REPORT_ISSUE" ||
+                confirmModal.action === "NOT_RECEIVED") && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+                  {confirmModal.dist.items.map((it) => {
+                    const state = missingItemsState[it.id] || {
+                      received: it.quantity_distributed,
+                      missing: 0,
+                      reason: "",
+                    };
+                    return (
+                      <div key={it.id} className="receipt-item-card">
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{it.item_name}</strong>
+                          <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                            Distributed: <strong>{it.quantity_distributed} {it.unit}</strong>
+                          </span>
+                        </div>
+                        <div className="receipt-item-grid">
+                          <label className="receipt-input-label">
+                            Quantity Received ({it.unit})
+                            <input
+                              type="number"
+                              min={0}
+                              max={it.quantity_distributed}
+                              value={state.received}
+                              disabled={confirmModal.action === "NOT_RECEIVED"}
+                              onChange={(e) => {
+                                const rec = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
+                                const miss = it.quantity_distributed - rec;
+                                setMissingItemsState((prev) => ({
+                                  ...prev,
+                                  [it.id]: { ...state, received: rec, missing: miss },
+                                }));
+                              }}
+                              className="receipt-input"
+                            />
+                          </label>
+                          <label className="receipt-input-label">
+                            Quantity Missing ({it.unit})
+                            <input
+                              type="number"
+                              min={0}
+                              max={it.quantity_distributed}
+                              value={state.missing}
+                              disabled={confirmModal.action === "NOT_RECEIVED"}
+                              onChange={(e) => {
+                                const miss = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
+                                const rec = it.quantity_distributed - miss;
+                                setMissingItemsState((prev) => ({
+                                  ...prev,
+                                  [it.id]: { ...state, received: rec, missing: miss },
+                                }));
+                              }}
+                              className="receipt-input"
+                            />
+                          </label>
+                        </div>
+                        <label className="receipt-input-label" style={{ marginTop: "8px" }}>
+                          Item Note / Reason for missing or damage
+                          <input
+                            type="text"
+                            placeholder="e.g. 1 can was punctured, or item not handed over"
+                            value={state.reason}
+                            onChange={(e) =>
+                              setMissingItemsState((prev) => ({
+                                ...prev,
+                                [it.id]: { ...state, reason: e.target.value },
+                              }))
+                            }
+                            className="receipt-input"
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-              {confirmModal.action === "PARTIALLY_RECEIVED" && (
-                <p>
-                  Please specify the actual quantity you received and any missing quantity for each item below:
-                </p>
-              )}
-              {confirmModal.action === "NOT_RECEIVED" && (
-                <p style={{ color: "#dc2626" }}>
-                  You are reporting that you have not received the distributed packages. This discrepancy will be immediately flagged to the relief officer.
-                </p>
-              )}
-              {confirmModal.action === "REPORT_ISSUE" && (
-                <p style={{ color: "#d97706" }}>
-                  Please detail any missing, damaged, or incorrect items so relief officers can investigate and dispatch replacements.
-                </p>
-              )}
+
+              {/* OVERALL FEEDBACK */}
+              <div style={{ marginBottom: "8px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                  Beneficiary Feedback & Remarks (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Add any remarks regarding the condition, distribution camp, or officer handover..."
+                  value={confirmFeedback}
+                  onChange={(e) => setConfirmFeedback(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "13px", resize: "vertical" }}
+                />
+              </div>
             </div>
 
-            {/* ITEM BREAKDOWN */}
-            {(confirmModal.action === "PARTIALLY_RECEIVED" ||
-              confirmModal.action === "REPORT_ISSUE" ||
-              confirmModal.action === "NOT_RECEIVED") && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1rem" }}>
-                {confirmModal.dist.items.map((it) => {
-                  const state = missingItemsState[it.id] || {
-                    received: it.quantity_distributed,
-                    missing: 0,
-                    reason: "",
-                  };
-                  return (
-                    <div
-                      key={it.id}
-                      style={{
-                        padding: "0.75rem",
-                        background: "var(--bg-subtle, #f8fafc)",
-                        borderRadius: "6px",
-                        border: "1px solid var(--border, #e2e8f0)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                        <strong>{it.item_name}</strong>
-                        <span style={{ fontSize: "0.85rem", color: "#64748b" }}>
-                          Distributed: {it.quantity_distributed} {it.unit}
-                        </span>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.5rem" }}>
-                        <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                          Quantity Received ({it.unit})
-                          <input
-                            type="number"
-                            min={0}
-                            max={it.quantity_distributed}
-                            value={state.received}
-                            disabled={confirmModal.action === "NOT_RECEIVED"}
-                            onChange={(e) => {
-                              const rec = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
-                              const miss = it.quantity_distributed - rec;
-                              setMissingItemsState((prev) => ({
-                                ...prev,
-                                [it.id]: { ...state, received: rec, missing: miss },
-                              }));
-                            }}
-                            style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                          Quantity Missing ({it.unit})
-                          <input
-                            type="number"
-                            min={0}
-                            max={it.quantity_distributed}
-                            value={state.missing}
-                            disabled={confirmModal.action === "NOT_RECEIVED"}
-                            onChange={(e) => {
-                              const miss = Math.max(0, Math.min(it.quantity_distributed, Number(e.target.value) || 0));
-                              const rec = it.quantity_distributed - miss;
-                              setMissingItemsState((prev) => ({
-                                ...prev,
-                                [it.id]: { ...state, received: rec, missing: miss },
-                              }));
-                            }}
-                            style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
-                          />
-                        </label>
-                      </div>
-                      <label style={{ fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                        Item Note / Reason for missing or damage
-                        <input
-                          type="text"
-                          placeholder="e.g. 1 can was punctured, or item not handed over"
-                          value={state.reason}
-                          onChange={(e) =>
-                            setMissingItemsState((prev) => ({
-                              ...prev,
-                              [it.id]: { ...state, reason: e.target.value },
-                            }))
-                          }
-                          style={{ padding: "0.4rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
-                        />
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* OVERALL FEEDBACK */}
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "1.25rem", fontSize: "0.85rem" }}>
-              Beneficiary Feedback & Remarks (Optional)
-              <textarea
-                rows={3}
-                placeholder="Add any remarks regarding the condition, distribution camp, or officer handover..."
-                value={confirmFeedback}
-                onChange={(e) => setConfirmFeedback(e.target.value)}
-                style={{ padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1", resize: "vertical" }}
-              />
-            </label>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+            <div className="modal-footer">
               <button
                 type="button"
-                className="secondary-button"
+                className="secondary-button btn-md"
                 onClick={() => setConfirmModal(null)}
                 disabled={confirmLoading}
               >
@@ -991,7 +1236,7 @@ export function BeneficiaryDashboard() {
               </button>
               <button
                 type="button"
-                className="primary-button"
+                className="primary-button btn-md"
                 onClick={handleConfirmSubmit}
                 disabled={confirmLoading}
               >
@@ -1002,196 +1247,18 @@ export function BeneficiaryDashboard() {
         </div>
       )}
 
-      {/* REQUEST RELIEF SUPPLIES SECTION */}
-      <section className="role-section my-supply-requests" style={{ marginTop: "1.5rem" }}>
-        <div className="role-section-heading embedded">
-          <div>
-            <h2>Request Relief Supplies</h2>
-            <p>Select currently available emergency supplies, specify required quantities, and submit for officer approval.</p>
-          </div>
-          <Boxes size={20} color="#0d9488" />
-        </div>
-
-        {requestSuccessMsg && (
-          <div className="status-banner success" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <CheckCircle2 size={16} /> {requestSuccessMsg}
-          </div>
-        )}
-
-        {requestErrorMsg && (
-          <div className="status-banner error" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <AlertCircle size={16} /> {requestErrorMsg}
-          </div>
-        )}
-
-        {/* 1. AVAILABLE SUPPLIES SELECTION GRID */}
-        <article className="panel" style={{ padding: "1.25rem", borderRadius: "8px", border: "1px solid var(--border, #cbd5e1)", background: "var(--bg-panel, #ffffff)", marginBottom: "1.25rem" }}>
-          <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem", fontWeight: 600 }}>Available Relief Supplies</h3>
-          <p style={{ margin: "0 0 1rem 0", fontSize: "0.825rem", color: "#64748b" }}>
-            Choose from supplies currently available in stock. Only items with real-time stock availability can be requested.
-          </p>
-
-          {availableSupplies.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
-              {availableSupplies.map((item) => {
-                const isSelected = !!selectedItems[item.id];
-                const currentQty = selectedItems[item.id] || 0;
-
-                return (
-                  <div
-                    key={item.id}
-                    style={{
-                      border: isSelected ? "1.5px solid #0d9488" : "1px solid var(--border, #e2e8f0)",
-                      borderRadius: "8px",
-                      padding: "0.85rem",
-                      background: isSelected ? "#f0fdfa" : "var(--bg-subtle, #f8fafc)",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "0.6rem",
-                      transition: "border-color 0.15s ease",
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
-                        <strong style={{ fontSize: "0.9rem", color: "#0f172a" }}>{item.item_name}</strong>
-                        {item.category && (
-                          <span className="status-badge" style={{ fontSize: "0.68rem", padding: "0.15rem 0.4rem", background: "#e0f2fe", color: "#0369a1" }}>
-                            {item.category}
-                          </span>
-                        )}
-                      </div>
-                      {item.description && (
-                        <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.3rem 0 0.5rem 0" }}>
-                          {item.description}
-                        </p>
-                      )}
-                      <div style={{ fontSize: "0.8rem", color: "#0f766e", fontWeight: 600, marginTop: "0.25rem" }}>
-                        Available: {item.quantity_available} {item.unit}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", paddingTop: "0.5rem", borderTop: "1px dashed #e2e8f0" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.82rem", cursor: "pointer", userSelect: "none" }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectItem(item.id, 1)}
-                        />
-                        Select Item
-                      </label>
-
-                      {isSelected ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                          <span style={{ fontSize: "0.78rem", color: "#64748b" }}>Qty:</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={item.quantity_available}
-                            value={currentQty}
-                            onChange={(e) => setItemQty(item.id, Number(e.target.value), item.quantity_available)}
-                            style={{
-                              width: "70px",
-                              padding: "0.25rem 0.4rem",
-                              borderRadius: "4px",
-                              border: "1px solid #cbd5e1",
-                              fontSize: "0.85rem",
-                              textAlign: "center",
-                            }}
-                          />
-                          <span style={{ fontSize: "0.75rem", color: "#64748b" }}>{item.unit}</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => toggleSelectItem(item.id, 1)}
-                          style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
-                        >
-                          + Add to Request
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+      {/* PREVIOUS & CURRENT SUPPLY REQUESTS HISTORY */}
+      {supplyRequests.length > 0 && (
+        <section className="role-section my-supply-requests-history" style={{ marginTop: "1.5rem" }}>
+          <div className="role-section-heading embedded">
+            <div>
+              <h2>My Supply Requests History</h2>
+              <p>Track approval decisions, partial allocations, and officer feedback for your submitted relief requests.</p>
             </div>
-          ) : (
-            <p style={{ color: "#64748b", fontSize: "0.85rem", fontStyle: "italic", margin: 0 }}>
-              No supplies currently available in stock. Please check back when fresh inventory arrives.
-            </p>
-          )}
+            <Boxes size={20} color="#0d9488" />
+          </div>
 
-          {/* REQUEST REVIEW & SUBMIT BAR */}
-          {Object.keys(selectedItems).length > 0 && (
-            <form onSubmit={handleSubmitSupplyRequest} style={{ marginTop: "1.25rem", padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                <strong style={{ fontSize: "0.9rem" }}>
-                  Selected Items for Request ({Object.keys(selectedItems).length}):
-                </strong>
-                <button
-                  type="button"
-                  onClick={() => setSelectedItems({})}
-                  style={{ background: "none", border: "none", color: "#dc2626", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  Clear Selection
-                </button>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-                {Object.entries(selectedItems).map(([invId, qty]) => {
-                  const it = availableSupplies.find((s) => s.id === Number(invId));
-                  if (!it) return null;
-                  return (
-                    <span
-                      key={invId}
-                      style={{
-                        padding: "0.3rem 0.6rem",
-                        background: "#e6fffa",
-                        border: "1px solid #99f6e4",
-                        borderRadius: "20px",
-                        fontSize: "0.8rem",
-                        color: "#0f766e",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                      }}
-                    >
-                      <strong>{it.item_name}</strong>: {qty} {it.unit}
-                    </span>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  placeholder="Optional notes or urgency for the officer (e.g., family with infants)..."
-                  value={requestNotes}
-                  onChange={(e) => setRequestNotes(e.target.value)}
-                  style={{ flex: 1, minWidth: "240px", padding: "0.45rem 0.75rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.85rem" }}
-                />
-                <button
-                  type="submit"
-                  className="primary-button"
-                  disabled={submittingRequest}
-                  style={{ padding: "0.45rem 1.25rem", fontSize: "0.85rem" }}
-                >
-                  {submittingRequest ? "Submitting..." : "Submit Supply Request"}
-                </button>
-              </div>
-            </form>
-          )}
-        </article>
-
-        {/* 2. PREVIOUS & CURRENT SUPPLY REQUESTS HISTORY */}
-        {supplyRequests.length > 0 && (
-          <article className="panel" style={{ padding: "1.25rem", borderRadius: "8px", border: "1px solid var(--border, #cbd5e1)", background: "var(--bg-panel, #ffffff)", marginBottom: "1.5rem" }}>
-            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem", fontWeight: 600 }}>My Supply Requests History</h3>
-            <p style={{ margin: "0 0 1rem 0", fontSize: "0.825rem", color: "#64748b" }}>
-              Track approval decisions, partial allocations, and officer feedback for your submitted relief requests.
-            </p>
-
+          <article className="panel" style={{ padding: "1.25rem", borderRadius: "8px", border: "1px solid var(--border, #cbd5e1)", background: "var(--bg-panel, #ffffff)" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {supplyRequests.map((req) => (
                 <div
@@ -1296,8 +1363,8 @@ export function BeneficiaryDashboard() {
               ))}
             </div>
           </article>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* MY RELIEF DISTRIBUTION SECTION */}
       <section className="role-section my-relief-distribution" style={{ marginTop: "1.5rem" }}>
