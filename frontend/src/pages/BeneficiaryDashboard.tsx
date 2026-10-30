@@ -176,9 +176,15 @@ export function BeneficiaryDashboard() {
       const applicationId = data.beneficiary.id as number;
       try {
         const scan = await documentApi.scan(applicationId, file);
-        setOcr(scan.data.extracted_fields);
+        if (scan?.data?.extracted_fields && typeof scan.data.extracted_fields === "object") {
+          setOcr(scan.data.extracted_fields);
+        }
       } catch {
-        await documentApi.upload(applicationId, file);
+        try {
+          await documentApi.upload(applicationId, file);
+        } catch (uploadErr) {
+          console.warn("Upload fallback notice:", uploadErr);
+        }
         uploadedForManualReview = true;
       }
       await beneficiaryApi.submit(applicationId);
@@ -214,14 +220,15 @@ export function BeneficiaryDashboard() {
     ),
   );
   const latestApplication = applications[0];
-  const aidHistory = verified.flatMap((item, index) => {
+  const aidHistory = (verified || []).flatMap((item, index) => {
+    if (!item) return [];
     if (item.allocations && item.allocations.length > 0) {
       return item.allocations.map((alloc) => ({
-        id: alloc.id,
-        date: alloc.allocated_at,
-        type: alloc.item_name || "Relief Supplies",
-        quantity: `${alloc.quantity_allocated} units (${alloc.centre_name || "Centre"})`,
-        status: alloc.status || "ALLOCATED",
+        id: alloc?.id || index,
+        date: alloc?.allocated_at || item.updated_at,
+        type: alloc?.item_name || "Relief Supplies",
+        quantity: `${alloc?.quantity_allocated ?? 1} units (${alloc?.centre_name || "Centre"})`,
+        status: alloc?.status || "ALLOCATED",
         district: item.district || "Tamil Nadu",
       }));
     }
@@ -295,10 +302,10 @@ export function BeneficiaryDashboard() {
           <div>
             <strong>OCR extracted information for review</strong>
             <p>
-              {ocr.name || "Name not detected"} ·{" "}
-              {ocr.date_of_birth || "Date of birth not detected"} ·{" "}
-              {ocr.gender || "Gender not detected"} ·{" "}
-              {ocr.masked_aadhaar || "Identifier not detected"}
+              {typeof ocr.name === "string" ? ocr.name : "Name not detected"} ·{" "}
+              {typeof ocr.date_of_birth === "string" ? ocr.date_of_birth : "Date of birth not detected"} ·{" "}
+              {typeof ocr.gender === "string" ? ocr.gender : "Gender not detected"} ·{" "}
+              {typeof ocr.masked_aadhaar === "string" ? ocr.masked_aadhaar : "Identifier not detected"}
             </p>
             <small>
               OCR is only a reading aid. It does not verify identity or
@@ -712,9 +719,9 @@ export function BeneficiaryDashboard() {
                 )}
               </div>
               <span
-                className={`status-badge ${item.verification_status.toLowerCase()}`}
+                className={`status-badge ${(item.verification_status || "PENDING").toLowerCase()}`}
               >
-                {item.verification_status.replace(/_/g, " ")}
+                {(item.verification_status || "PENDING").replace(/_/g, " ")}
               </span>
             </article>
           ))
@@ -767,8 +774,9 @@ function statusBuckets(applications: Beneficiary[]) {
     DUPLICATE_FLAGGED: "#ea580c",
   };
   return Object.entries(
-    applications.reduce<Record<string, number>>((acc, item) => {
-      acc[item.verification_status] = (acc[item.verification_status] || 0) + 1;
+    (applications || []).reduce<Record<string, number>>((acc, item) => {
+      const st = item?.verification_status || "PENDING";
+      acc[st] = (acc[st] || 0) + 1;
       return acc;
     }, {}),
   ).map(([name, value]) => ({

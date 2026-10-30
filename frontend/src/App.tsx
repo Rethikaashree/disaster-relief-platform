@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useEffect, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
@@ -62,7 +63,8 @@ export default function App() {
     return <div className="app-loader">Checking secure session...</div>;
 
   return (
-    <BrowserRouter>
+    <ErrorBoundary fallbackTitle="Relief Grid Application Error">
+      <BrowserRouter>
       {user ? (
         <SignedInApp
           user={user}
@@ -106,6 +108,7 @@ export default function App() {
         </Routes>
       )}
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
