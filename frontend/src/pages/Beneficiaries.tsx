@@ -104,7 +104,7 @@ export function Beneficiaries() {
       <section className="panel table-panel">
         <div className="table-meta">
           <span>{filtered.length} records</span>
-          <span>Aadhaar identifiers are always masked</span>
+          <span>Protected verification records</span>
         </div>
         <div className="table-scroll">
           <table>
@@ -132,7 +132,7 @@ export function Beneficiaries() {
                         <div>
                           <strong>{item.name}</strong>
                           <small>
-                            {item.masked_aadhaar || "Aadhaar not scanned"}
+                            {item.masked_aadhaar || item.phone || "Standard application"}
                           </small>
                         </div>
                       </div>

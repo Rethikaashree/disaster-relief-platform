@@ -4,11 +4,9 @@ from sqlalchemy.orm import Session
 from ..models import AuditLog, Beneficiary, VerificationRecord
 
 VERIFICATION_SCORES = {
-    "identity_complete": 20,
-    "document_available": 20,
-    "ocr_successful": 20,
-    "duplicate_clear": 25,
-    "disaster_information_complete": 15,
+    "identity_complete": 35,
+    "duplicate_clear": 35,
+    "disaster_information_complete": 30,
 }
 
 
@@ -16,14 +14,14 @@ def calculate_score(details: dict) -> int:
     score = 0
     if details.get("identity_complete"):
         score += VERIFICATION_SCORES["identity_complete"]
-    if details.get("document_available"):
-        score += VERIFICATION_SCORES["document_available"]
-    if details.get("ocr_successful"):
-        score += VERIFICATION_SCORES["ocr_successful"]
     if details.get("duplicate_clear"):
         score += VERIFICATION_SCORES["duplicate_clear"]
     if details.get("disaster_information_complete"):
         score += VERIFICATION_SCORES["disaster_information_complete"]
+    if details.get("document_available"):
+        score += 10
+    if details.get("ocr_successful"):
+        score += 10
     return min(score, 100)
 
 

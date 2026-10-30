@@ -4,15 +4,13 @@ import {
   BadgeCheck,
   Boxes,
   Check,
-  FileCheck2,
   History,
   PackageCheck,
-  ScanLine,
   ShieldAlert,
   XCircle,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { beneficiaryApi, documentApi } from "../api";
+import { beneficiaryApi } from "../api";
 import type { Beneficiary } from "../types";
 
 export function Review() {
@@ -21,7 +19,6 @@ export function Review() {
   const navigate = useNavigate();
   const [item, setItem] = useState<Beneficiary | null>(null);
   const [history, setHistory] = useState<any[]>([]);
-  const [file, setFile] = useState<File | null>(null);
   const [remarks, setRemarks] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -35,26 +32,6 @@ export function Review() {
       .catch(() => setError("Unable to load beneficiary."))
       .finally(() => setLoading(false));
   }, [id]);
-  const upload = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!file) return;
-    setMessage("");
-    setError("");
-    try {
-      const { data } = await documentApi.scan(id, file);
-      setMessage(
-        `OCR completed. ${data.extracted_fields.name || "Fields extracted"} detected.`,
-      );
-      const refreshed = await beneficiaryApi.get(id);
-      setItem(refreshed.data);
-    } catch (err) {
-      setError(
-        typeof err === "object" && err && "response" in err
-          ? (err as any).response?.data?.detail || "OCR failed."
-          : "OCR failed.",
-      );
-    }
-  };
   const decision = async (newStatus: string) => {
     if (!remarks.trim()) return setError("A review remark is required.");
     setError("");
@@ -83,8 +60,7 @@ export function Review() {
           <span className="eyebrow">MANUAL REVIEW</span>
           <h1>{item.name}</h1>
           <p>
-            {item.application_id} ·{" "}
-            {item.masked_aadhaar || "Identifier pending"}
+            {item.application_id}{item.masked_aadhaar ? ` · ${item.masked_aadhaar}` : ""}
           </p>
         </div>
         <button
@@ -183,37 +159,6 @@ export function Review() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </article>
-          <article className="panel scanner-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Aadhaar OCR scanner</h2>
-                <p>Required for document-based review</p>
-              </div>
-              <ScanLine />
-            </div>
-            <form onSubmit={upload} className="upload-form">
-              <label className="file-drop">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/bmp,image/tiff,image/webp"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  required
-                />
-                <FileCheck2 size={28} />
-                <strong>{file ? file.name : "Choose an Aadhaar image"}</strong>
-                <span>PNG, JPG, BMP, TIFF, or WebP · Maximum 10 MB</span>
-              </label>
-              <button className="primary-button" disabled={loading}>
-                {loading ? "Processing..." : "Run OCR scan"}
-              </button>
-            </form>
-            {status && (
-              <div className="ocr-result">
-                <BadgeCheck />
-                {status}
               </div>
             )}
           </article>
