@@ -116,6 +116,13 @@ class BeneficiaryCreate(BaseModel):
     def normalize_phone(cls, value: str) -> str:
         return value.strip()
 
+    @field_validator("aadhaar_identifier", mode="before")
+    def normalize_aadhaar(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped if stripped else None
+
 
 class BeneficiaryUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
@@ -132,6 +139,13 @@ class BeneficiaryUpdate(BaseModel):
     family_size: int | None = Field(default=None, ge=1, le=1000)
     number_of_dependents: int | None = Field(default=None, ge=0, le=1000)
     aadhaar_identifier: str | None = Field(default=None, min_length=8, max_length=64)
+
+    @field_validator("aadhaar_identifier", mode="before")
+    def normalize_aadhaar_update(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped if stripped else None
 
 
 class VerificationRequest(BaseModel):

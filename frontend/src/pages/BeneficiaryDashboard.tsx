@@ -1,3 +1,4 @@
+import { formatApiError } from "../utils/formatApiError";
 import { scanAadhaarImage } from "../utils/aadhaarOcr";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -167,6 +168,7 @@ export function BeneficiaryDashboard() {
     try {
       const payload = {
         ...form,
+        aadhaar_identifier: (form.aadhaar_identifier || "").trim() || null,
         date_of_birth: form.date_of_birth || null,
         date_affected: form.date_affected || null,
         family_size: Number(form.family_size),
@@ -789,10 +791,5 @@ function statusBuckets(applications: Beneficiary[]) {
 }
 
 function apiError(error: unknown): string {
-  if (typeof error === "object" && error && "response" in error) {
-    const response = (error as { response?: { data?: { detail?: string } } })
-      .response;
-    return response?.data?.detail || "The application could not be saved.";
-  }
-  return "Unable to reach the verification service.";
+  return formatApiError(error, "The application could not be saved.");
 }

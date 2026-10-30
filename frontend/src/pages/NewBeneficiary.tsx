@@ -1,3 +1,4 @@
+import { formatApiError } from "../utils/formatApiError";
 import { scanAadhaarImage } from "../utils/aadhaarOcr";
 import { useState, type FormEvent } from "react";
 import { CheckCircle2, Plus, ShieldAlert, UploadCloud } from "lucide-react";
@@ -74,12 +75,7 @@ export function NewBeneficiary() {
       setMessage(`Application ${data.beneficiary.application_id} created.`);
       setTimeout(() => navigate(`/review/${data.beneficiary.id}`), 500);
     } catch (err) {
-      setError(
-        typeof err === "object" && err && "response" in err
-          ? (err as any).response?.data?.detail ||
-              "Unable to create beneficiary."
-          : "Unable to create beneficiary.",
-      );
+      setError(formatApiError(err, "Unable to create beneficiary."));
     } finally {
       setLoading(false);
     }
