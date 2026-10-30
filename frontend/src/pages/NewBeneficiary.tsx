@@ -1,5 +1,6 @@
+import { scanAadhaarImage } from "../utils/aadhaarOcr";
 import { useState, type FormEvent } from "react";
-import { CheckCircle2, Plus, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Plus, ShieldAlert, UploadCloud } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { beneficiaryApi } from "../api";
 
@@ -24,9 +25,39 @@ export function NewBeneficiary() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const navigate = useNavigate();
   const update = (key: string, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
+  const handleFileChange = async (selectedFile: File | null) => {
+    setFile(selectedFile);
+    if (!selectedFile) return;
+    setScanning(true);
+    setScanMessage("Scanning Aadhaar image...");
+    try {
+      const parsed = await scanAadhaarImage(selectedFile);
+      if (parsed.aadhaarNumber) {
+        setForm((prev) => ({
+          ...prev,
+          aadhaar_identifier: parsed.aadhaarNumber,
+          name: parsed.name || prev.name,
+          date_of_birth: parsed.dateOfBirth || prev.date_of_birth,
+          gender: parsed.gender || prev.gender,
+        }));
+        setScanMessage(`Aadhaar detected: ${parsed.aadhaarNumber}`);
+      } else {
+        setScanMessage("Aadhaar uploaded. Please enter or confirm the 12-digit number.");
+      }
+    } catch (err) {
+      console.warn("Auto-scan notice:", err);
+      setScanMessage("Aadhaar image selected.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setLoading(true);
@@ -266,15 +297,35 @@ export function NewBeneficiary() {
               </p>
             </div>
           </div>
+          <label className="file-drop" style={{ marginBottom: "1rem" }}>
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+            />
+            <UploadCloud size={28} />
+            <strong>{file?.name || "Upload Aadhaar card image to auto-fill"}</strong>
+            <span>JPG or PNG — auto-detects and extracts Aadhaar number, name, and DOB</span>
+          </label>
+          {scanning && (
+            <p style={{ marginBottom: "1rem", color: "#3b82f6", fontWeight: 500 }}>
+              🔍 Scanning Aadhaar image with OCR...
+            </p>
+          )}
+          {scanMessage && !scanning && (
+            <p style={{ marginBottom: "1rem", color: "#10b981", fontWeight: 500 }}>
+              ✓ {scanMessage}
+            </p>
+          )}
           <label className="identify-field">
-            Aadhaar identifier
+            Aadhaar identifier (Extracted or Manual)
             <input
               required
               minLength={8}
               maxLength={64}
               value={form.aadhaar_identifier}
               onChange={(e) => update("aadhaar_identifier", e.target.value)}
-              placeholder="Use the 12-digit UID or an approved document identifier"
+              placeholder="12-digit UID (e.g. 1234 5678 9012)"
             />
           </label>
         </section>

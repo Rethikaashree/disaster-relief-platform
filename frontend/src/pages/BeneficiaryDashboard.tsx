@@ -1,3 +1,4 @@
+import { scanAadhaarImage } from "../utils/aadhaarOcr";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   BadgeCheck,
@@ -42,6 +43,7 @@ type ApplicationForm = {
   date_affected: string;
   family_size: string;
   number_of_dependents: string;
+  aadhaar_identifier?: string;
 };
 
 function createInitialForm(): ApplicationForm {
@@ -60,6 +62,7 @@ function createInitialForm(): ApplicationForm {
     date_affected: "",
     family_size: "1",
     number_of_dependents: "0",
+    aadhaar_identifier: "",
   };
 }
 
@@ -68,6 +71,8 @@ export function BeneficiaryDashboard() {
   const [applications, setApplications] = useState<Beneficiary[]>([]);
   const [form, setForm] = useState(createInitialForm);
   const [file, setFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState("");
   const [ocr, setOcr] = useState<Record<string, string> | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,6 +81,33 @@ export function BeneficiaryDashboard() {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+
+  const handleFileChange = async (selectedFile: File | null) => {
+    setFile(selectedFile);
+    if (!selectedFile) return;
+    setScanning(true);
+    setScanMessage("Scanning Aadhaar image...");
+    try {
+      const parsed = await scanAadhaarImage(selectedFile);
+      if (parsed.aadhaarNumber) {
+        setForm((prev) => ({
+          ...prev,
+          aadhaar_identifier: parsed.aadhaarNumber,
+          name: parsed.name || prev.name,
+          date_of_birth: parsed.dateOfBirth || prev.date_of_birth,
+          gender: parsed.gender || prev.gender,
+        }));
+        setScanMessage(`Aadhaar detected: ${parsed.aadhaarNumber}`);
+      } else {
+        setScanMessage("Aadhaar uploaded. Please confirm or enter the 12-digit number manually.");
+      }
+    } catch (err) {
+      console.warn("Auto-scan notice:", err);
+      setScanMessage("Aadhaar image selected. Manual verification will proceed.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const generateRandomInputs = () => {
     const districts = ["Cuddalore", "Nagapattinam", "Thanjavur", "Chennai", "Tiruvallur", "Madurai"];
@@ -563,12 +595,35 @@ export function BeneficiaryDashboard() {
                 required
                 type="file"
                 accept="image/png,image/jpeg"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
               />
               <UploadCloud size={28} />
               <strong>{file?.name || "Choose an Aadhaar image"}</strong>
               <span>JPG or PNG, maximum 10 MB</span>
             </label>
+            {scanning && (
+              <p style={{ marginTop: "0.5rem", color: "#3b82f6", fontWeight: 500 }}>
+                🔍 Scanning Aadhaar image with OCR...
+              </p>
+            )}
+            {scanMessage && !scanning && (
+              <p style={{ marginTop: "0.5rem", color: "#10b981", fontWeight: 500 }}>
+                ✓ {scanMessage}
+              </p>
+            )}
+            <div style={{ marginTop: "1rem" }}>
+              <label>
+                Aadhaar Number (Auto-extracted or Manual)
+                <input
+                  type="text"
+                  placeholder="12-digit Aadhaar UID"
+                  value={form.aadhaar_identifier || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, aadhaar_identifier: e.target.value })
+                  }
+                />
+              </label>
+            </div>
           </section>
           {error && (
             <div role="alert" className="alert danger role-form-alert">
