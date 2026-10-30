@@ -2,7 +2,7 @@ import { scanAadhaarImage } from "../utils/aadhaarOcr";
 import { useState, type FormEvent } from "react";
 import { CheckCircle2, Plus, ShieldAlert, UploadCloud } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { beneficiaryApi } from "../api";
+import { beneficiaryApi, getUser } from "../api";
 
 const initial = {
   name: "",
@@ -114,6 +114,7 @@ export function NewBeneficiary() {
               <h2>Personal details</h2>
               <p>Identity information used for verification.</p>
             </div>
+            {getUser()?.email && (getUser()!.email.includes("demo") || getUser()!.email.includes("example.com")) && (
             <button
               type="button"
               className="secondary-button"
@@ -150,6 +151,7 @@ export function NewBeneficiary() {
             >
               GENERATE RANDOM INPUTS
             </button>
+            )}
           </div>
           <div className="form-grid">
             <label>

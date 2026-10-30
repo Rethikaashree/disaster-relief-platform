@@ -420,14 +420,16 @@ export function BeneficiaryDashboard() {
                 <h2>Personal details</h2>
                 <p>Confirm the information for this application.</p>
               </div>
-              <button
-                type="button"
-                className="secondary-button"
-                style={{ marginLeft: "auto" }}
-                onClick={generateRandomInputs}
-              >
-                <RefreshCw size={15} /> GENERATE RANDOM INPUTS
-              </button>
+              {user?.email && (user.email.includes("demo") || user.email.includes("example.com")) && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{ marginLeft: "auto" }}
+                  onClick={generateRandomInputs}
+                >
+                  <RefreshCw size={15} /> GENERATE RANDOM INPUTS
+                </button>
+              )}
             </div>
             <div className="form-grid">
               <label>
