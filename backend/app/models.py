@@ -68,6 +68,7 @@ class Beneficiary(Base):
     request_items: Mapped[list["ReliefRequestItem"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
     allocations: Mapped[list["SupplyAllocation"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
     distributions: Mapped[list["ReliefDistribution"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
+    supply_requests: Mapped[list["BeneficiarySupplyRequest"]] = relationship(back_populates="beneficiary", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -181,6 +182,7 @@ class SupplyInventory(Base):
     quantity_delivered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     storage_location: Mapped[str] = mapped_column(String(100), nullable=False)
     low_stock_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     centre: Mapped[DistributionCentre] = relationship(back_populates="inventories")
@@ -293,3 +295,40 @@ class DistributionConfirmation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     distribution: Mapped["ReliefDistribution"] = relationship(back_populates="confirmations")
+
+
+class BeneficiarySupplyRequest(Base):
+    __tablename__ = "beneficiary_supply_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_ref: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    beneficiary_id: Mapped[int] = mapped_column(Integer, ForeignKey("beneficiaries.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="PENDING")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    officer_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    beneficiary: Mapped["Beneficiary"] = relationship(back_populates="supply_requests")
+    reviewed_by: Mapped["User | None"] = relationship()
+    items: Mapped[list["BeneficiarySupplyRequestItem"]] = relationship(back_populates="request", cascade="all, delete-orphan")
+
+
+class BeneficiarySupplyRequestItem(Base):
+    __tablename__ = "beneficiary_supply_request_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(Integer, ForeignKey("beneficiary_supply_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_id: Mapped[int] = mapped_column(Integer, ForeignKey("supply_inventories.id"), nullable=False, index=True)
+    item_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    unit: Mapped[str] = mapped_column(String(30), nullable=False)
+    quantity_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_approved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="PENDING")
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allocation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("supply_allocations.id"), nullable=True)
+
+    request: Mapped["BeneficiarySupplyRequest"] = relationship(back_populates="items")
+    inventory: Mapped["SupplyInventory"] = relationship()
+    allocation: Mapped["SupplyAllocation | None"] = relationship()

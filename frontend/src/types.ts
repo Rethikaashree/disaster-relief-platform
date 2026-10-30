@@ -45,6 +45,7 @@ export interface SupplyInventory {
   stock_status: "In Stock" | "Low Stock" | "Out of Stock" | string;
   centre_name?: string;
   centre_district?: string;
+  description?: string | null;
 }
 
 export interface DistributionCentre {
@@ -220,4 +221,40 @@ export interface DistributionTrackingSummary {
   partial_or_unsuccessful: number;
   reported_discrepancies: number;
   distributions: ReliefDistribution[];
+}
+
+
+export interface BeneficiarySupplyRequestItem {
+  id: number;
+  request_id: number;
+  inventory_id: number;
+  item_name: string;
+  category?: string | null;
+  unit: string;
+  quantity_requested: number;
+  quantity_approved: number;
+  status: "PENDING" | "APPROVED" | "PARTIALLY_APPROVED" | "REJECTED" | string;
+  decision_reason?: string | null;
+  allocation_id?: number | null;
+  available_stock?: number;
+}
+
+export interface BeneficiarySupplyRequest {
+  id: number;
+  request_ref: string;
+  beneficiary_id: number;
+  beneficiary_name?: string | null;
+  application_id?: string | null;
+  district?: string | null;
+  priority_level?: string | null;
+  family_size?: number | null;
+  status: "PENDING" | "APPROVED" | "PARTIALLY_APPROVED" | "REJECTED" | string;
+  notes?: string | null;
+  reviewed_by_id?: number | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  officer_remarks?: string | null;
+  created_at: string;
+  updated_at: string;
+  items: BeneficiarySupplyRequestItem[];
 }

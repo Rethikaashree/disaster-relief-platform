@@ -213,9 +213,84 @@ export const distributionApi = {
     api.get<import("./types").DistributionTrackingSummary>(
       "/distributions/tracking-summary"
     ),
+  createInventory: (payload: {
+    centre_id: number;
+    item_name: string;
+    category: string;
+    unit: string;
+    quantity_available: number;
+    low_stock_threshold?: number;
+    storage_location: string;
+    description?: string;
+  }) => api.post<import("./types").SupplyInventory>("/distribution/inventory", payload),
+  updateInventory: (
+    inventoryId: number,
+    payload: {
+      item_name?: string;
+      category?: string;
+      unit?: string;
+      quantity_available?: number;
+      low_stock_threshold?: number;
+      storage_location?: string;
+      description?: string;
+    }
+  ) => api.put<import("./types").SupplyInventory>(`/distribution/inventory/${inventoryId}`, payload),
+  restockInventory: (
+    inventoryId: number,
+    payload: { quantity_added: number; source_notes?: string }
+  ) => api.post<{ message: string; inventory: import("./types").SupplyInventory }>(
+    `/distribution/inventory/${inventoryId}/restock`,
+    payload
+  ),
+  availableSupplies: () =>
+    api.get<{ items: import("./types").SupplyInventory[]; total: number }>(
+      "/distribution/available-supplies"
+    ),
 };
 
 export const getUser = (): User | null => {
   const stored = localStorage.getItem("user");
   return stored ? (JSON.parse(stored) as User) : null;
+};
+
+
+export const supplyRequestApi = {
+  submit: (payload: {
+    beneficiary_id: number;
+    notes?: string;
+    items: { inventory_id: number; quantity_requested: number }[];
+  }) =>
+    api.post<{ message: string; request: import("./types").BeneficiarySupplyRequest }>(
+      "/supply-requests",
+      payload
+    ),
+  mine: () =>
+    api.get<{ items: import("./types").BeneficiarySupplyRequest[]; total: number }>(
+      "/supply-requests/mine"
+    ),
+  all: (statusFilter?: string) =>
+    api.get<{ items: import("./types").BeneficiarySupplyRequest[]; total: number }>(
+      "/supply-requests/all",
+      { params: statusFilter ? { status_filter: statusFilter } : undefined }
+    ),
+  beneficiaryRequests: (beneficiaryId: number) =>
+    api.get<{ items: import("./types").BeneficiarySupplyRequest[]; total: number }>(
+      `/supply-requests/beneficiary/${beneficiaryId}`
+    ),
+  review: (
+    requestId: number,
+    payload: {
+      officer_remarks?: string;
+      items: {
+        item_id: number;
+        action: string;
+        quantity_approved?: number;
+        reason?: string;
+      }[];
+    }
+  ) =>
+    api.post<{ message: string; request: import("./types").BeneficiarySupplyRequest }>(
+      `/supply-requests/${requestId}/review`,
+      payload
+    ),
 };

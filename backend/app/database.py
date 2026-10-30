@@ -57,6 +57,13 @@ def ensure_database_schema() -> None:
             if column_name not in beneficiary_columns:
                 conn.execute(text(f"ALTER TABLE beneficiaries ADD COLUMN {column_name} {definition}"))
 
+        inv_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(supply_inventories)")).fetchall()
+        }
+        if "description" not in inv_columns:
+            conn.execute(text("ALTER TABLE supply_inventories ADD COLUMN description TEXT"))
+
 
 ensure_database_schema()
 

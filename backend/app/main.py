@@ -26,6 +26,8 @@ from .models import (
     ReliefDistribution,
     ReliefDistributionItem,
     DistributionConfirmation,
+    BeneficiarySupplyRequest,
+    BeneficiarySupplyRequestItem,
 )
 from .schemas import (
     AllocationRecommendationResponse,
@@ -55,6 +57,13 @@ from .schemas import (
     ReliefDistributionResponse,
     ReliefDistributionItemResponse,
     DistributionTrackingSummaryResponse,
+    SupplyInventoryCreate,
+    SupplyInventoryUpdate,
+    SupplyInventoryRestockRequest,
+    SupplyRequestCreate,
+    SupplyRequestReviewDecision,
+    BeneficiarySupplyRequestResponse,
+    BeneficiarySupplyRequestItemResponse,
 )
 from .security import create_access_token, get_current_user, hash_password, normalize_role, require_role, verify_password
 from .services.duplicate_service import check_duplicates
@@ -1705,6 +1714,490 @@ def get_distribution_tracking_summary(
         "distributions": [_distribution_response(d) for d in all_distributions[:100]]
     }
 
+
+
+# -------------------------------------------------------------
+# AVAILABLE SUPPLIES MANAGEMENT & BENEFICIARY REQUEST ENDPOINTS
+# -------------------------------------------------------------
+
+def _supply_request_response(req: BeneficiarySupplyRequest) -> BeneficiarySupplyRequestResponse:
+    b = req.beneficiary
+    return BeneficiarySupplyRequestResponse(
+        id=req.id,
+        request_ref=req.request_ref,
+        beneficiary_id=req.beneficiary_id,
+        beneficiary_name=b.name if b else None,
+        application_id=b.application_id if b else None,
+        district=b.district if b else None,
+        priority_level=b.priority_level if b else "NORMAL",
+        family_size=b.family_size if b else 1,
+        status=req.status,
+        notes=req.notes,
+        reviewed_by_id=req.reviewed_by_id,
+        reviewed_by_name=req.reviewed_by.name if req.reviewed_by else None,
+        reviewed_at=req.reviewed_at,
+        officer_remarks=req.officer_remarks,
+        created_at=req.created_at,
+        updated_at=req.updated_at,
+        items=[
+            BeneficiarySupplyRequestItemResponse(
+                id=item.id,
+                request_id=item.request_id,
+                inventory_id=item.inventory_id,
+                item_name=item.item_name,
+                category=item.category,
+                unit=item.unit,
+                quantity_requested=item.quantity_requested,
+                quantity_approved=item.quantity_approved,
+                status=item.status,
+                decision_reason=item.decision_reason,
+                allocation_id=item.allocation_id,
+                available_stock=item.inventory.quantity_available if item.inventory else 0,
+            )
+            for item in req.items
+        ]
+    )
+
+
+@app.post("/api/distribution/inventory", status_code=status.HTTP_201_CREATED)
+def create_supply_inventory(
+    payload: SupplyInventoryCreate,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    centre = db.get(DistributionCentre, payload.centre_id)
+    if not centre:
+        raise HTTPException(status_code=404, detail="Distribution centre not found")
+
+    inv = SupplyInventory(
+        centre_id=centre.id,
+        item_name=payload.item_name.strip(),
+        category=payload.category.strip(),
+        unit=payload.unit.strip(),
+        quantity_available=payload.quantity_available,
+        quantity_reserved=0,
+        quantity_allocated=0,
+        quantity_delivered=0,
+        storage_location=payload.storage_location.strip(),
+        low_stock_threshold=payload.low_stock_threshold,
+        description=payload.description.strip() if payload.description else None,
+    )
+    db.add(inv)
+    db.commit()
+    db.refresh(inv)
+
+    _audit(
+        db, user, "INVENTORY_CREATED", "SUPPLY_INVENTORY", str(inv.id),
+        f"Added '{inv.item_name}' ({inv.quantity_available} {inv.unit}) at {centre.name}"
+    )
+    return SupplyInventoryResponse(
+        id=inv.id,
+        centre_id=inv.centre_id,
+        item_name=inv.item_name,
+        category=inv.category,
+        unit=inv.unit,
+        quantity_available=inv.quantity_available,
+        quantity_reserved=inv.quantity_reserved,
+        quantity_allocated=inv.quantity_allocated,
+        quantity_delivered=inv.quantity_delivered,
+        storage_location=inv.storage_location,
+        low_stock_threshold=inv.low_stock_threshold,
+        stock_status=inv.stock_status,
+        centre_name=centre.name,
+        centre_district=centre.district,
+        description=inv.description,
+    )
+
+
+@app.put("/api/distribution/inventory/{inventory_id}")
+def update_supply_inventory(
+    inventory_id: int,
+    payload: SupplyInventoryUpdate,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    inv = db.get(SupplyInventory, inventory_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    if payload.item_name is not None:
+        inv.item_name = payload.item_name.strip()
+    if payload.category is not None:
+        inv.category = payload.category.strip()
+    if payload.unit is not None:
+        inv.unit = payload.unit.strip()
+    if payload.quantity_available is not None:
+        inv.quantity_available = payload.quantity_available
+    if payload.low_stock_threshold is not None:
+        inv.low_stock_threshold = payload.low_stock_threshold
+    if payload.storage_location is not None:
+        inv.storage_location = payload.storage_location.strip()
+    if payload.description is not None:
+        inv.description = payload.description.strip() or None
+
+    inv.updated_at = datetime.now(timezone.utc)
+    _audit(db, user, "INVENTORY_UPDATED", "SUPPLY_INVENTORY", str(inv.id), f"Updated '{inv.item_name}' details")
+    db.commit()
+    db.refresh(inv)
+
+    return SupplyInventoryResponse(
+        id=inv.id,
+        centre_id=inv.centre_id,
+        item_name=inv.item_name,
+        category=inv.category,
+        unit=inv.unit,
+        quantity_available=inv.quantity_available,
+        quantity_reserved=inv.quantity_reserved,
+        quantity_allocated=inv.quantity_allocated,
+        quantity_delivered=inv.quantity_delivered,
+        storage_location=inv.storage_location,
+        low_stock_threshold=inv.low_stock_threshold,
+        stock_status=inv.stock_status,
+        centre_name=inv.centre.name if inv.centre else None,
+        centre_district=inv.centre.district if inv.centre else None,
+        description=inv.description,
+    )
+
+
+@app.post("/api/distribution/inventory/{inventory_id}/restock")
+def restock_supply_inventory(
+    inventory_id: int,
+    payload: SupplyInventoryRestockRequest,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    inv = db.get(SupplyInventory, inventory_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    old_qty = inv.quantity_available
+    inv.quantity_available += payload.quantity_added
+    inv.updated_at = datetime.now(timezone.utc)
+
+    remarks = f"Restocked +{payload.quantity_added} {inv.unit} (From {old_qty} to {inv.quantity_available})."
+    if payload.source_notes:
+        remarks += f" Note: {payload.source_notes}"
+
+    _audit(db, user, "INVENTORY_RESTOCKED", "SUPPLY_INVENTORY", str(inv.id), remarks)
+    db.commit()
+    db.refresh(inv)
+
+    return {
+        "message": f"Successfully restocked {payload.quantity_added} {inv.unit} of '{inv.item_name}'.",
+        "inventory": SupplyInventoryResponse(
+            id=inv.id,
+            centre_id=inv.centre_id,
+            item_name=inv.item_name,
+            category=inv.category,
+            unit=inv.unit,
+            quantity_available=inv.quantity_available,
+            quantity_reserved=inv.quantity_reserved,
+            quantity_allocated=inv.quantity_allocated,
+            quantity_delivered=inv.quantity_delivered,
+            storage_location=inv.storage_location,
+            low_stock_threshold=inv.low_stock_threshold,
+            stock_status=inv.stock_status,
+            centre_name=inv.centre.name if inv.centre else None,
+            centre_district=inv.centre.district if inv.centre else None,
+            description=inv.description,
+        )
+    }
+
+
+@app.get("/api/distribution/available-supplies")
+def get_available_supplies(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve only items currently available in stock (quantity_available > 0) for beneficiaries to request."""
+    inventories = db.scalars(
+        select(SupplyInventory)
+        .where(SupplyInventory.quantity_available > 0)
+        .order_by(SupplyInventory.category, SupplyInventory.item_name)
+    ).all()
+
+    return {
+        "items": [
+            SupplyInventoryResponse(
+                id=inv.id,
+                centre_id=inv.centre_id,
+                item_name=inv.item_name,
+                category=inv.category,
+                unit=inv.unit,
+                quantity_available=inv.quantity_available,
+                quantity_reserved=inv.quantity_reserved,
+                quantity_allocated=inv.quantity_allocated,
+                quantity_delivered=inv.quantity_delivered,
+                storage_location=inv.storage_location,
+                low_stock_threshold=inv.low_stock_threshold,
+                stock_status=inv.stock_status,
+                centre_name=inv.centre.name if inv.centre else None,
+                centre_district=inv.centre.district if inv.centre else None,
+                description=inv.description,
+            )
+            for inv in inventories
+        ],
+        "total": len(inventories)
+    }
+
+
+@app.post("/api/supply-requests", status_code=status.HTTP_201_CREATED)
+def create_supply_request(
+    payload: SupplyRequestCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    beneficiary = db.get(Beneficiary, payload.beneficiary_id)
+    if not beneficiary:
+        raise HTTPException(status_code=404, detail="Beneficiary not found")
+    _authorize_beneficiary_access(user, beneficiary)
+
+    now = datetime.now(timezone.utc)
+    request_ref = f"REQ-{now.strftime('%Y%m%d')}-{uuid4().hex[:6].upper()}"
+
+    supply_request = BeneficiarySupplyRequest(
+        request_ref=request_ref,
+        beneficiary_id=beneficiary.id,
+        status="PENDING",
+        notes=payload.notes,
+        created_at=now,
+    )
+    db.add(supply_request)
+    db.flush()
+
+    for item_in in payload.items:
+        if item_in.quantity_requested <= 0:
+            raise HTTPException(status_code=400, detail="Requested quantity must be greater than zero")
+
+        inv = db.get(SupplyInventory, item_in.inventory_id)
+        if not inv:
+            raise HTTPException(status_code=400, detail=f"Supply item ID {item_in.inventory_id} does not exist")
+
+        req_item = BeneficiarySupplyRequestItem(
+            request_id=supply_request.id,
+            inventory_id=inv.id,
+            item_name=inv.item_name,
+            category=inv.category,
+            unit=inv.unit,
+            quantity_requested=item_in.quantity_requested,
+            quantity_approved=0,
+            status="PENDING",
+        )
+        db.add(req_item)
+
+    _audit(
+        db, user, "SUPPLY_REQUEST_SUBMITTED", "SUPPLY_REQUEST",
+        request_ref, f"Beneficiary {beneficiary.name} requested {len(payload.items)} supply item(s)",
+        beneficiary.id
+    )
+
+    db.commit()
+    db.refresh(supply_request)
+    return {
+        "message": "Relief supply request submitted successfully. It will be reviewed by an authorized relief officer.",
+        "request": _supply_request_response(supply_request)
+    }
+
+
+@app.get("/api/supply-requests/mine")
+def get_my_supply_requests(
+    user: User = Depends(require_role("BENEFICIARY")),
+    db: Session = Depends(get_db),
+):
+    b_ids = db.scalars(select(Beneficiary.id).where(Beneficiary.created_by_id == user.id)).all()
+    if not b_ids:
+        return {"items": [], "total": 0}
+
+    requests = db.scalars(
+        select(BeneficiarySupplyRequest)
+        .where(BeneficiarySupplyRequest.beneficiary_id.in_(b_ids))
+        .order_by(desc(BeneficiarySupplyRequest.created_at))
+    ).all()
+
+    return {
+        "items": [_supply_request_response(r) for r in requests],
+        "total": len(requests)
+    }
+
+
+@app.get("/api/supply-requests/all")
+def get_all_supply_requests(
+    status_filter: str | None = None,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    query = select(BeneficiarySupplyRequest).order_by(desc(BeneficiarySupplyRequest.created_at))
+    if status_filter and status_filter.upper() != "ALL":
+        query = query.where(BeneficiarySupplyRequest.status == status_filter.upper())
+
+    requests = db.scalars(query).all()
+    return {
+        "items": [_supply_request_response(r) for r in requests],
+        "total": len(requests)
+    }
+
+
+@app.get("/api/supply-requests/beneficiary/{beneficiary_id}")
+def get_beneficiary_supply_requests(
+    beneficiary_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    beneficiary = db.get(Beneficiary, beneficiary_id)
+    if not beneficiary:
+        raise HTTPException(status_code=404, detail="Beneficiary not found")
+    _authorize_beneficiary_access(user, beneficiary)
+
+    requests = db.scalars(
+        select(BeneficiarySupplyRequest)
+        .where(BeneficiarySupplyRequest.beneficiary_id == beneficiary_id)
+        .order_by(desc(BeneficiarySupplyRequest.created_at))
+    ).all()
+
+    return {
+        "items": [_supply_request_response(r) for r in requests],
+        "total": len(requests)
+    }
+
+
+@app.post("/api/supply-requests/{request_id}/review")
+def review_supply_request(
+    request_id: int,
+    payload: SupplyRequestReviewDecision,
+    user: User = Depends(require_role("MAIN_ADMIN", "VERIFICATION_OFFICER")),
+    db: Session = Depends(get_db),
+):
+    req = db.get(BeneficiarySupplyRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Supply request not found")
+
+    if req.status != "PENDING":
+        raise HTTPException(status_code=400, detail=f"Request {req.request_ref} has already been reviewed ({req.status}).")
+
+    beneficiary = req.beneficiary
+    now = datetime.now(timezone.utc)
+
+    review_map = {item.item_id: item for item in payload.items}
+    created_allocations = []
+    has_approval = False
+    has_partial_or_rejection = False
+
+    for item in req.items:
+        decision = review_map.get(item.id)
+        if not decision:
+            raise HTTPException(status_code=400, detail=f"Missing review decision for item '{item.item_name}'")
+
+        action = decision.action.strip().upper()
+        if action not in {"APPROVE_FULL", "APPROVE_PARTIAL", "REJECT"}:
+            raise HTTPException(status_code=400, detail=f"Invalid action '{action}'. Must be APPROVE_FULL, APPROVE_PARTIAL, or REJECT.")
+
+        inv = item.inventory
+        if not inv:
+            inv = db.get(SupplyInventory, item.inventory_id)
+
+        if action == "APPROVE_FULL":
+            qty = item.quantity_requested
+            item.status = "APPROVED"
+            has_approval = True
+        elif action == "APPROVE_PARTIAL":
+            qty = decision.quantity_approved
+            if qty <= 0 or qty >= item.quantity_requested:
+                raise HTTPException(status_code=400, detail=f"Partial approval quantity for '{item.item_name}' must be between 1 and {item.quantity_requested - 1}")
+            if not decision.reason or not decision.reason.strip():
+                raise HTTPException(status_code=400, detail=f"A reason is required when partially approving '{item.item_name}'")
+            item.status = "PARTIALLY_APPROVED"
+            item.decision_reason = decision.reason.strip()
+            has_approval = True
+            has_partial_or_rejection = True
+        elif action == "REJECT":
+            qty = 0
+            if not decision.reason or not decision.reason.strip():
+                raise HTTPException(status_code=400, detail=f"A reason is required when rejecting '{item.item_name}'")
+            item.status = "REJECTED"
+            item.decision_reason = decision.reason.strip()
+            has_partial_or_rejection = True
+
+        item.quantity_approved = qty
+
+        # Stock deduction & allocation creation
+        if qty > 0:
+            if qty > inv.quantity_available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for '{inv.item_name}': requested approval of {qty} {inv.unit}, but only {inv.quantity_available} available in stock at {inv.centre.name if inv.centre else 'warehouse'}."
+                )
+
+            inv.quantity_available -= qty
+            inv.quantity_allocated += qty
+
+            # Create or link ReliefRequestItem
+            req_item = ReliefRequestItem(
+                beneficiary_id=beneficiary.id,
+                item_name=item.item_name,
+                category=item.category or "General",
+                unit=item.unit,
+                quantity_requested=item.quantity_requested,
+                quantity_allocated=qty,
+                quantity_delivered=0,
+                status="FULFILLED" if qty >= item.quantity_requested else "PARTIAL",
+            )
+            db.add(req_item)
+            db.flush()
+
+            # Create SupplyAllocation record
+            alloc = SupplyAllocation(
+                beneficiary_id=beneficiary.id,
+                request_item_id=req_item.id,
+                centre_id=inv.centre_id,
+                inventory_id=inv.id,
+                officer_id=user.id,
+                quantity_allocated=qty,
+                quantity_delivered=0,
+                unit=inv.unit,
+                status="ALLOCATED",
+                notes=f"Approved from request {req.request_ref}. {decision.reason or ''}".strip(),
+                allocated_at=now,
+            )
+            db.add(alloc)
+            db.flush()
+            item.allocation_id = alloc.id
+            created_allocations.append(alloc)
+
+    # Determine overall request status
+    if has_approval and not has_partial_or_rejection:
+        req.status = "APPROVED"
+    elif has_approval and has_partial_or_rejection:
+        req.status = "PARTIALLY_APPROVED"
+    else:
+        req.status = "REJECTED"
+
+    req.reviewed_by_id = user.id
+    req.reviewed_at = now
+    req.officer_remarks = payload.officer_remarks
+    req.updated_at = now
+
+    if created_allocations:
+        beneficiary.allocation_status = "FULLY_ALLOCATED" if req.status == "APPROVED" else "PARTIALLY_ALLOCATED"
+
+    _audit(
+        db, user, "SUPPLY_REQUEST_REVIEWED", "SUPPLY_REQUEST",
+        req.request_ref, f"Reviewed request {req.request_ref} ({req.status}). Allocated {len(created_allocations)} item(s).",
+        beneficiary.id
+    )
+
+    if beneficiary.created_by_id:
+        _notify(
+            db, beneficiary.created_by_id,
+            f"Relief Supply Request {req.status.replace('_', ' ').title()}",
+            f"Your relief supply request {req.request_ref} has been reviewed ({req.status.replace('_', ' ')}). Approved items have been allocated."
+        )
+
+    db.commit()
+    db.refresh(req)
+    return {
+        "message": f"Supply request {req.request_ref} successfully reviewed ({req.status}).",
+        "request": _supply_request_response(req)
+    }
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_, exc: HTTPException):

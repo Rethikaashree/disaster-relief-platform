@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
@@ -14,9 +15,12 @@ import {
   Truck,
   Warehouse,
   XCircle,
+  PlusCircle,
+  Edit,
+  Clock,
 } from "lucide-react";
-import { distributionApi, beneficiaryApi } from "../api";
-import type { DistributionCentre, SupplyInventory, Beneficiary, DistributionTrackingSummary } from "../types";
+import { distributionApi, beneficiaryApi, supplyRequestApi } from "../api";
+import type { DistributionCentre, SupplyInventory, Beneficiary, DistributionTrackingSummary, BeneficiarySupplyRequest } from "../types";
 
 const DISTRICTS = [
   "All",
@@ -51,8 +55,41 @@ export function Distribution() {
   const [district, setDistrict] = useState("All");
   const [category, setCategory] = useState("All");
   const [stockStatus, setStockStatus] = useState("All");
-  const [viewTab, setViewTab] = useState<"centres" | "inventory" | "awaiting" | "tracking">("centres");
+  const [viewTab, setViewTab] = useState<"centres" | "inventory" | "awaiting" | "tracking" | "requests">("centres");
   const [trackingSummary, setTrackingSummary] = useState<DistributionTrackingSummary | null>(null);
+  const [allSupplyRequests, setAllSupplyRequests] = useState<BeneficiarySupplyRequest[]>([]);
+  const [requestsFilter, setRequestsFilter] = useState("All");
+
+  // Modals for inventory management
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showRestockModal, setShowRestockModal] = useState<SupplyInventory | null>(null);
+  const [modalMode, setModalMode] = useState<"restock" | "edit">("restock");
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalSuccess, setModalSuccess] = useState("");
+  const [modalError, setModalError] = useState("");
+
+  // New inventory form
+  const [newInvForm, setNewInvForm] = useState({
+    item_name: "",
+    category: "Food",
+    unit: "packets",
+    quantity_available: 50,
+    low_stock_threshold: 10,
+    storage_location: "Main Bay",
+    description: "",
+  });
+
+  // Restock / Edit form
+  const [restockQty, setRestockQty] = useState(25);
+  const [restockNotes, setRestockNotes] = useState("");
+  const [editInvForm, setEditInvForm] = useState({
+    item_name: "",
+    category: "",
+    unit: "",
+    low_stock_threshold: 10,
+    storage_location: "",
+    description: "",
+  });
   const [trackingSearch, setTrackingSearch] = useState("");
   const [trackingStatusFilter, setTrackingStatusFilter] = useState("All");
   const [awaitingRequests, setAwaitingRequests] = useState<Beneficiary[]>([]);
@@ -63,11 +100,13 @@ export function Distribution() {
     setLoading(true);
     setError("");
     try {
-      const [centresRes, benRes, trackRes] = await Promise.all([
+      const [centresRes, benRes, trackRes, reqRes] = await Promise.all([
         distributionApi.centres(district !== "All" ? district : undefined),
         beneficiaryApi.list(),
         distributionApi.trackingSummary().catch(() => ({ data: null })),
+        supplyRequestApi.all().catch(() => ({ data: { items: [], total: 0 } })),
       ]);
+      setAllSupplyRequests(reqRes.data.items || []);
       if (trackRes.data) {
         setTrackingSummary(trackRes.data);
       }
@@ -113,6 +152,137 @@ export function Distribution() {
     const matchStatus = stockStatus === "All" || inv.stock_status === stockStatus;
     return matchCat && matchStatus;
   });
+
+  const handleCreateInventory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCentre) {
+      setModalError("Please select a distribution centre first.");
+      return;
+    }
+    if (!newInvForm.item_name.trim()) {
+      setModalError("Item name is required.");
+      return;
+    }
+    setModalLoading(true);
+    setModalError("");
+    setModalSuccess("");
+    try {
+      await distributionApi.createInventory({
+        centre_id: selectedCentre.id,
+        item_name: newInvForm.item_name.trim(),
+        category: newInvForm.category,
+        unit: newInvForm.unit.trim() || "units",
+        quantity_available: Number(newInvForm.quantity_available),
+        low_stock_threshold: Number(newInvForm.low_stock_threshold),
+        storage_location: newInvForm.storage_location.trim() || "Main Bay",
+        description: newInvForm.description.trim() || undefined,
+      });
+      setModalSuccess("New supply item registered into centre inventory!");
+      setNewInvForm({
+        item_name: "",
+        category: "Food",
+        unit: "packets",
+        quantity_available: 50,
+        low_stock_threshold: 10,
+        storage_location: "Main Bay",
+        description: "",
+      });
+      setTimeout(() => {
+        setShowAddModal(false);
+        setModalSuccess("");
+      }, 1200);
+      await loadData();
+    } catch (err: any) {
+      setModalError(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to add new inventory item."
+      );
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleRestockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showRestockModal) return;
+    if (restockQty <= 0) {
+      setModalError("Please enter a quantity greater than zero.");
+      return;
+    }
+    setModalLoading(true);
+    setModalError("");
+    setModalSuccess("");
+    try {
+      await distributionApi.restockInventory(showRestockModal.id, {
+        quantity_added: Number(restockQty),
+        source_notes: restockNotes.trim() || undefined,
+      });
+      setModalSuccess(`Successfully added +${restockQty} ${showRestockModal.unit} to stock!`);
+      setTimeout(() => {
+        setShowRestockModal(null);
+        setModalSuccess("");
+      }, 1000);
+      await loadData();
+    } catch (err: any) {
+      setModalError(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to restock item."
+      );
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleEditInvSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showRestockModal) return;
+    setModalLoading(true);
+    setModalError("");
+    setModalSuccess("");
+    try {
+      await distributionApi.updateInventory(showRestockModal.id, {
+        item_name: editInvForm.item_name.trim() || undefined,
+        category: editInvForm.category || undefined,
+        unit: editInvForm.unit.trim() || undefined,
+        low_stock_threshold: Number(editInvForm.low_stock_threshold),
+        storage_location: editInvForm.storage_location.trim() || undefined,
+        description: editInvForm.description.trim() || undefined,
+      });
+      setModalSuccess("Item details updated successfully!");
+      setTimeout(() => {
+        setShowRestockModal(null);
+        setModalSuccess("");
+      }, 1000);
+      await loadData();
+    } catch (err: any) {
+      setModalError(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to update item."
+      );
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const openRestockModal = (inv: SupplyInventory, mode: "restock" | "edit" = "restock") => {
+    setShowRestockModal(inv);
+    setModalMode(mode);
+    setRestockQty(25);
+    setRestockNotes("");
+    setEditInvForm({
+      item_name: inv.item_name,
+      category: inv.category,
+      unit: inv.unit,
+      low_stock_threshold: inv.low_stock_threshold,
+      storage_location: inv.storage_location,
+      description: inv.description || "",
+    });
+    setModalError("");
+    setModalSuccess("");
+  };
 
   return (
     <div className="page">
@@ -213,6 +383,12 @@ export function Distribution() {
           onClick={() => setViewTab("tracking")}
         >
           <PackageCheck size={16} /> Distribution & Receipt Tracking
+        </button>
+        <button
+          className={viewTab === "requests" ? "primary-button" : "secondary-button"}
+          onClick={() => setViewTab("requests")}
+        >
+          <Boxes size={16} /> Beneficiary Requests ({allSupplyRequests.length})
         </button>
       </div>
 
@@ -413,6 +589,18 @@ export function Distribution() {
                 <option value="Out of Stock">Out of Stock</option>
               </select>
             </label>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                setShowAddModal(true);
+                setModalError("");
+                setModalSuccess("");
+              }}
+              style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", padding: "0.4rem 0.85rem" }}
+            >
+              <PlusCircle size={15} /> Add New Relief Supply
+            </button>
           </div>
 
           <div className="table-scroll">
@@ -427,6 +615,7 @@ export function Distribution() {
                   <th>Delivered</th>
                   <th>Threshold</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -463,7 +652,7 @@ export function Distribution() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
+                    <td colSpan={9} style={{ textAlign: "center", padding: "24px" }}>
                       No supplies match the selected filters.
                     </td>
                   </tr>
@@ -750,6 +939,456 @@ export function Distribution() {
           </section>
         </section>
       )}
+
+      {/* TAB 5: BENEFICIARY SUPPLY REQUESTS QUEUE */}
+      {viewTab === "requests" && (
+        <section className="panel table-panel" style={{ marginTop: "16px" }}>
+          <div className="panel-header" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Beneficiary Relief Supply Requests Queue</h2>
+              <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: "0.85rem" }}>
+                Monitor and review emergency supply requests submitted by verified beneficiaries across all disaster relief camps.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <label className="select-box" style={{ margin: 0 }}>
+                <Filter size={15} />
+                <select value={requestsFilter} onChange={(e) => setRequestsFilter(e.target.value)}>
+                  <option value="All">All Statuses ({allSupplyRequests.length})</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="APPROVED">Fully Approved</option>
+                  <option value="PARTIALLY_APPROVED">Partially Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Request Ref</th>
+                  <th>Beneficiary Name</th>
+                  <th>Location & Priority</th>
+                  <th>Requested Supplies</th>
+                  <th>Submission Date</th>
+                  <th>Review Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allSupplyRequests.filter((r) => requestsFilter === "All" || r.status === requestsFilter).length ? (
+                  allSupplyRequests
+                    .filter((r) => requestsFilter === "All" || r.status === requestsFilter)
+                    .map((req) => (
+                      <tr key={req.id}>
+                        <td>
+                          <code style={{ fontWeight: 700, color: "#0f766e" }}>{req.request_ref}</code>
+                        </td>
+                        <td>
+                          <strong>{req.beneficiary_name || `Beneficiary #${req.beneficiary_id}`}</strong>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>Family size: {req.family_size ?? "N/A"}</div>
+                        </td>
+                        <td>
+                          <span>{req.district || "Relief Zone"}</span>
+                          <div>
+                            <span className={`status-badge ${req.priority_level === "HIGH" ? "rejected" : "verified"}`} style={{ fontSize: "10px", padding: "1px 4px" }}>
+                              {req.priority_level || "NORMAL"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            {req.items.map((it) => (
+                              <div key={it.id} style={{ fontSize: "12px" }}>
+                                <strong>{it.item_name}</strong>: {it.quantity_requested} {it.unit}
+                                {it.status !== "PENDING" && (
+                                  <span style={{ color: it.status === "APPROVED" || it.status === "PARTIALLY_APPROVED" ? "#0f766e" : "#dc2626", marginLeft: "4px" }}>
+                                    (Appr: {it.quantity_approved})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
+                          {new Date(req.created_at).toLocaleDateString()}
+                        </td>
+                        <td>
+                          <span
+                            className={`status-badge ${
+                              req.status === "APPROVED"
+                                ? "verified"
+                                : req.status === "PARTIALLY_APPROVED"
+                                ? "under_review"
+                                : req.status === "REJECTED"
+                                ? "rejected"
+                                : "pending"
+                            }`}
+                          >
+                            {req.status}
+                          </span>
+                        </td>
+                        <td>
+                          <Link
+                            to={`/review/${req.beneficiary_id}`}
+                            className="primary-button"
+                            style={{ fontSize: "11px", padding: "4px 8px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          >
+                            {req.status === "PENDING" ? "Review Request" : "View Record"}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: "24px" }}>
+                      No beneficiary supply requests match the selected status filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* MODAL: ADD NEW RELIEF SUPPLY */}
+      {showAddModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#ffffff", borderRadius: "10px", maxWidth: "520px", width: "100%", padding: "24px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Add New Relief Supply Item</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {modalSuccess && <div className="alert success" style={{ marginBottom: "12px" }}>{modalSuccess}</div>}
+            {modalError && <div className="alert danger" style={{ marginBottom: "12px" }}>{modalError}</div>}
+
+            <form onSubmit={handleCreateInventory} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  Distribution Centre:
+                </label>
+                <select
+                  value={selectedCentre ? selectedCentre.id : ""}
+                  onChange={(e) => {
+                    const c = centres.find((item) => item.id === Number(e.target.value));
+                    if (c) setSelectedCentre(c);
+                  }}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                >
+                  {centres.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.district})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  Supply Item Name *:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Baby Formula Milk (400g), ORS Sachets..."
+                  value={newInvForm.item_name}
+                  onChange={(e) => setNewInvForm({ ...newInvForm, item_name: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Category:
+                  </label>
+                  <select
+                    value={newInvForm.category}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, category: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  >
+                    {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Unit of Measure:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="packets, bottles, litres, pieces, kits..."
+                    value={newInvForm.unit}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, unit: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Initial Stock Quantity:
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newInvForm.quantity_available}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, quantity_available: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Low Stock Threshold:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newInvForm.low_stock_threshold}
+                    onChange={(e) => setNewInvForm({ ...newInvForm, low_stock_threshold: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  Storage Bay / Location:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Bay 2, Shelf B, Cold Room..."
+                  value={newInvForm.storage_location}
+                  onChange={(e) => setNewInvForm({ ...newInvForm, storage_location: e.target.value })}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  Description / Specification (optional):
+                </label>
+                <textarea
+                  placeholder="Detailed specifications for beneficiaries and warehouse staff..."
+                  value={newInvForm.description}
+                  onChange={(e) => setNewInvForm({ ...newInvForm, description: e.target.value })}
+                  rows={2}
+                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setShowAddModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={modalLoading}
+                >
+                  {modalLoading ? "Saving..." : "Add to Inventory"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESTOCK / EDIT SUPPLY */}
+      {showRestockModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div style={{ background: "#ffffff", borderRadius: "10px", maxWidth: "480px", width: "100%", padding: "24px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
+                  {modalMode === "restock" ? `Restock: ${showRestockModal.item_name}` : `Edit: ${showRestockModal.item_name}`}
+                </h3>
+                <small style={{ color: "#64748b" }}>
+                  Current Stock: <strong>{showRestockModal.quantity_available} {showRestockModal.unit}</strong> ({showRestockModal.stock_status})
+                </small>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRestockModal(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+
+            {/* MODE SWITCHER */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
+              <button
+                type="button"
+                className={modalMode === "restock" ? "primary-button" : "secondary-button"}
+                onClick={() => setModalMode("restock")}
+                style={{ flex: 1, fontSize: "12px", padding: "6px" }}
+              >
+                <PlusCircle size={13} /> Add Stock (Restock)
+              </button>
+              <button
+                type="button"
+                className={modalMode === "edit" ? "primary-button" : "secondary-button"}
+                onClick={() => setModalMode("edit")}
+                style={{ flex: 1, fontSize: "12px", padding: "6px" }}
+              >
+                <Edit size={13} /> Edit Item Details
+              </button>
+            </div>
+
+            {modalSuccess && <div className="alert success" style={{ marginBottom: "12px" }}>{modalSuccess}</div>}
+            {modalError && <div className="alert danger" style={{ marginBottom: "12px" }}>{modalError}</div>}
+
+            {modalMode === "restock" ? (
+              <form onSubmit={handleRestockSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Quantity Arrived (+{showRestockModal.unit}):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(Number(e.target.value))}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Source / Donation Notes (optional):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. NGO shipment from Red Cross, corporate donation..."
+                    value={restockNotes}
+                    onChange={(e) => setRestockNotes(e.target.value)}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+                  <button type="button" className="secondary-button" onClick={() => setShowRestockModal(null)}>Cancel</button>
+                  <button type="submit" className="primary-button" disabled={modalLoading}>
+                    {modalLoading ? "Updating..." : `Confirm Restock (+${restockQty})`}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleEditInvSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Item Name:
+                  </label>
+                  <input
+                    type="text"
+                    value={editInvForm.item_name}
+                    onChange={(e) => setEditInvForm({ ...editInvForm, item_name: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                      Category:
+                    </label>
+                    <select
+                      value={editInvForm.category}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, category: e.target.value })}
+                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    >
+                      {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                      Unit:
+                    </label>
+                    <input
+                      type="text"
+                      value={editInvForm.unit}
+                      onChange={(e) => setEditInvForm({ ...editInvForm, unit: e.target.value })}
+                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Low Stock Threshold:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editInvForm.low_stock_threshold}
+                    onChange={(e) => setEditInvForm({ ...editInvForm, low_stock_threshold: Number(e.target.value) })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Storage Location:
+                  </label>
+                  <input
+                    type="text"
+                    value={editInvForm.storage_location}
+                    onChange={(e) => setEditInvForm({ ...editInvForm, storage_location: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    Description:
+                  </label>
+                  <textarea
+                    value={editInvForm.description}
+                    onChange={(e) => setEditInvForm({ ...editInvForm, description: e.target.value })}
+                    rows={2}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" }}>
+                  <button type="button" className="secondary-button" onClick={() => setShowRestockModal(null)}>Cancel</button>
+                  <button type="submit" className="primary-button" disabled={modalLoading}>
+                    {modalLoading ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

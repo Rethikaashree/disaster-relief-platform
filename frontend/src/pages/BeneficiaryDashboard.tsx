@@ -20,6 +20,7 @@ import {
   Truck,
   ShieldAlert,
   FileQuestion,
+  Boxes,
 } from "lucide-react";
 import {
   Bar,
@@ -33,8 +34,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { beneficiaryApi, documentApi, distributionApi, getUser } from "../api";
-import type { ReliefDistribution } from "../types";
+import { beneficiaryApi, documentApi, distributionApi, supplyRequestApi, getUser } from "../api";
+import type { ReliefDistribution, SupplyInventory, BeneficiarySupplyRequest } from "../types";
 import { NotificationsPanel } from "../components/NotificationsPanel";
 import type { Beneficiary } from "../types";
 
@@ -86,6 +87,13 @@ export function BeneficiaryDashboard() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [availableSupplies, setAvailableSupplies] = useState<SupplyInventory[]>([]);
+  const [supplyRequests, setSupplyRequests] = useState<BeneficiarySupplyRequest[]>([]);
+  const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
+  const [requestNotes, setRequestNotes] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [requestSuccessMsg, setRequestSuccessMsg] = useState("");
+  const [requestErrorMsg, setRequestErrorMsg] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
@@ -160,12 +168,16 @@ export function BeneficiaryDashboard() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      const [appRes, distRes] = await Promise.all([
+      const [appRes, distRes, availRes, reqRes] = await Promise.all([
         beneficiaryApi.mine(),
         distributionApi.myDistributions().catch(() => ({ data: { items: [], total: 0 } })),
+        distributionApi.availableSupplies().catch(() => ({ data: { items: [], total: 0 } })),
+        supplyRequestApi.mine().catch(() => ({ data: { items: [], total: 0 } })),
       ]);
       setApplications(appRes.data.items);
       setDistributions(distRes.data.items || []);
+      setAvailableSupplies(availRes.data.items || []);
+      setSupplyRequests(reqRes.data.items || []);
     } catch (err) {
       setError(apiError(err));
     } finally {
@@ -190,6 +202,75 @@ export function BeneficiaryDashboard() {
     setMissingItemsState(initialMissing);
     setConfirmFeedback("");
     setConfirmModal({ dist, action });
+  };
+
+  const handleSubmitSupplyRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!applications.length) {
+      setRequestErrorMsg("You need an active relief application to request supplies.");
+      return;
+    }
+    const chosenItems = Object.entries(selectedItems)
+      .filter(([_, qty]) => qty > 0)
+      .map(([invId, qty]) => ({
+        inventory_id: Number(invId),
+        quantity_requested: qty,
+      }));
+
+    if (chosenItems.length === 0) {
+      setRequestErrorMsg("Please select at least one relief item and enter the needed quantity.");
+      return;
+    }
+
+    setSubmittingRequest(true);
+    setRequestErrorMsg("");
+    setRequestSuccessMsg("");
+    try {
+      const res = await supplyRequestApi.submit({
+        beneficiary_id: applications[0].id,
+        notes: requestNotes || undefined,
+        items: chosenItems,
+      });
+      setRequestSuccessMsg(`Supply request submitted successfully! Reference: ${res.data.request.request_ref}. An authorized officer will review your request.`);
+      setSelectedItems({});
+      setRequestNotes("");
+      await refresh();
+    } catch (err: any) {
+      setRequestErrorMsg(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to submit supply request. Please try again."
+      );
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
+  const toggleSelectItem = (invId: number, defaultQty = 1) => {
+    setSelectedItems((prev) => {
+      const copy = { ...prev };
+      if (copy[invId]) {
+        delete copy[invId];
+      } else {
+        copy[invId] = defaultQty;
+      }
+      return copy;
+    });
+  };
+
+  const setItemQty = (invId: number, qty: number, maxQty: number) => {
+    if (qty <= 0) {
+      setSelectedItems((prev) => {
+        const copy = { ...prev };
+        delete copy[invId];
+        return copy;
+      });
+    } else {
+      setSelectedItems((prev) => ({
+        ...prev,
+        [invId]: Math.min(qty, maxQty),
+      }));
+    }
   };
 
   const handleConfirmSubmit = async () => {
@@ -920,6 +1001,303 @@ export function BeneficiaryDashboard() {
           </div>
         </div>
       )}
+
+      {/* REQUEST RELIEF SUPPLIES SECTION */}
+      <section className="role-section my-supply-requests" style={{ marginTop: "1.5rem" }}>
+        <div className="role-section-heading embedded">
+          <div>
+            <h2>Request Relief Supplies</h2>
+            <p>Select currently available emergency supplies, specify required quantities, and submit for officer approval.</p>
+          </div>
+          <Boxes size={20} color="#0d9488" />
+        </div>
+
+        {requestSuccessMsg && (
+          <div className="status-banner success" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <CheckCircle2 size={16} /> {requestSuccessMsg}
+          </div>
+        )}
+
+        {requestErrorMsg && (
+          <div className="status-banner error" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <AlertCircle size={16} /> {requestErrorMsg}
+          </div>
+        )}
+
+        {/* 1. AVAILABLE SUPPLIES SELECTION GRID */}
+        <article className="panel" style={{ padding: "1.25rem", borderRadius: "8px", border: "1px solid var(--border, #cbd5e1)", background: "var(--bg-panel, #ffffff)", marginBottom: "1.25rem" }}>
+          <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem", fontWeight: 600 }}>Available Relief Supplies</h3>
+          <p style={{ margin: "0 0 1rem 0", fontSize: "0.825rem", color: "#64748b" }}>
+            Choose from supplies currently available in stock. Only items with real-time stock availability can be requested.
+          </p>
+
+          {availableSupplies.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
+              {availableSupplies.map((item) => {
+                const isSelected = !!selectedItems[item.id];
+                const currentQty = selectedItems[item.id] || 0;
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: isSelected ? "1.5px solid #0d9488" : "1px solid var(--border, #e2e8f0)",
+                      borderRadius: "8px",
+                      padding: "0.85rem",
+                      background: isSelected ? "#f0fdfa" : "var(--bg-subtle, #f8fafc)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "0.6rem",
+                      transition: "border-color 0.15s ease",
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+                        <strong style={{ fontSize: "0.9rem", color: "#0f172a" }}>{item.item_name}</strong>
+                        {item.category && (
+                          <span className="status-badge" style={{ fontSize: "0.68rem", padding: "0.15rem 0.4rem", background: "#e0f2fe", color: "#0369a1" }}>
+                            {item.category}
+                          </span>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.3rem 0 0.5rem 0" }}>
+                          {item.description}
+                        </p>
+                      )}
+                      <div style={{ fontSize: "0.8rem", color: "#0f766e", fontWeight: 600, marginTop: "0.25rem" }}>
+                        Available: {item.quantity_available} {item.unit}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", paddingTop: "0.5rem", borderTop: "1px dashed #e2e8f0" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.82rem", cursor: "pointer", userSelect: "none" }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectItem(item.id, 1)}
+                        />
+                        Select Item
+                      </label>
+
+                      {isSelected ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                          <span style={{ fontSize: "0.78rem", color: "#64748b" }}>Qty:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={item.quantity_available}
+                            value={currentQty}
+                            onChange={(e) => setItemQty(item.id, Number(e.target.value), item.quantity_available)}
+                            style={{
+                              width: "70px",
+                              padding: "0.25rem 0.4rem",
+                              borderRadius: "4px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "0.85rem",
+                              textAlign: "center",
+                            }}
+                          />
+                          <span style={{ fontSize: "0.75rem", color: "#64748b" }}>{item.unit}</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => toggleSelectItem(item.id, 1)}
+                          style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
+                        >
+                          + Add to Request
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ color: "#64748b", fontSize: "0.85rem", fontStyle: "italic", margin: 0 }}>
+              No supplies currently available in stock. Please check back when fresh inventory arrives.
+            </p>
+          )}
+
+          {/* REQUEST REVIEW & SUBMIT BAR */}
+          {Object.keys(selectedItems).length > 0 && (
+            <form onSubmit={handleSubmitSupplyRequest} style={{ marginTop: "1.25rem", padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                <strong style={{ fontSize: "0.9rem" }}>
+                  Selected Items for Request ({Object.keys(selectedItems).length}):
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItems({})}
+                  style={{ background: "none", border: "none", color: "#dc2626", fontSize: "0.75rem", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Clear Selection
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+                {Object.entries(selectedItems).map(([invId, qty]) => {
+                  const it = availableSupplies.find((s) => s.id === Number(invId));
+                  if (!it) return null;
+                  return (
+                    <span
+                      key={invId}
+                      style={{
+                        padding: "0.3rem 0.6rem",
+                        background: "#e6fffa",
+                        border: "1px solid #99f6e4",
+                        borderRadius: "20px",
+                        fontSize: "0.8rem",
+                        color: "#0f766e",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <strong>{it.item_name}</strong>: {qty} {it.unit}
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  placeholder="Optional notes or urgency for the officer (e.g., family with infants)..."
+                  value={requestNotes}
+                  onChange={(e) => setRequestNotes(e.target.value)}
+                  style={{ flex: 1, minWidth: "240px", padding: "0.45rem 0.75rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.85rem" }}
+                />
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={submittingRequest}
+                  style={{ padding: "0.45rem 1.25rem", fontSize: "0.85rem" }}
+                >
+                  {submittingRequest ? "Submitting..." : "Submit Supply Request"}
+                </button>
+              </div>
+            </form>
+          )}
+        </article>
+
+        {/* 2. PREVIOUS & CURRENT SUPPLY REQUESTS HISTORY */}
+        {supplyRequests.length > 0 && (
+          <article className="panel" style={{ padding: "1.25rem", borderRadius: "8px", border: "1px solid var(--border, #cbd5e1)", background: "var(--bg-panel, #ffffff)", marginBottom: "1.5rem" }}>
+            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem", fontWeight: 600 }}>My Supply Requests History</h3>
+            <p style={{ margin: "0 0 1rem 0", fontSize: "0.825rem", color: "#64748b" }}>
+              Track approval decisions, partial allocations, and officer feedback for your submitted relief requests.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {supplyRequests.map((req) => (
+                <div
+                  key={req.id}
+                  style={{
+                    border: "1px solid var(--border, #e2e8f0)",
+                    borderRadius: "8px",
+                    padding: "1rem",
+                    background: "var(--bg-subtle, #f8fafc)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>REQUEST REF</span>
+                        <code style={{ fontSize: "0.9rem", fontWeight: 700, color: "#0f766e" }}>{req.request_ref}</code>
+                      </div>
+                      <small style={{ color: "#64748b", display: "block", marginTop: "0.2rem" }}>
+                        Submitted on {new Date(req.created_at).toLocaleString()}
+                        {req.reviewed_at ? ` · Reviewed on ${new Date(req.reviewed_at).toLocaleString()}` : " · Awaiting Officer Review"}
+                      </small>
+                    </div>
+
+                    <span
+                      className={`status-badge ${
+                        req.status === "APPROVED"
+                          ? "verified"
+                          : req.status === "PARTIALLY_APPROVED"
+                          ? "under_review"
+                          : req.status === "REJECTED"
+                          ? "rejected"
+                          : "pending"
+                      }`}
+                    >
+                      {req.status}
+                    </span>
+                  </div>
+
+                  {req.notes && (
+                    <p style={{ fontSize: "0.82rem", color: "#475569", margin: "0 0 0.6rem 0", fontStyle: "italic" }}>
+                      My Note: "{req.notes}"
+                    </p>
+                  )}
+
+                  {req.officer_remarks && (
+                    <div style={{ padding: "0.5rem 0.75rem", background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: "6px", fontSize: "0.82rem", color: "#0f766e", marginBottom: "0.75rem" }}>
+                      <strong>Officer Remark:</strong> {req.officer_remarks}
+                    </div>
+                  )}
+
+                  {/* ITEM CARDS */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.5rem" }}>
+                    {req.items.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "6px",
+                          padding: "0.65rem 0.85rem",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <strong style={{ display: "block", fontSize: "0.85rem" }}>{item.item_name}</strong>
+                          <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                            Requested: <strong>{item.quantity_requested} {item.unit}</strong>
+                          </span>
+                          {item.status !== "PENDING" && (
+                            <span style={{ display: "block", fontSize: "0.75rem", color: item.status === "APPROVED" || item.status === "PARTIALLY_APPROVED" ? "#0f766e" : "#dc2626" }}>
+                              Approved: <strong>{item.quantity_approved} {item.unit}</strong>
+                            </span>
+                          )}
+                          {item.decision_reason && (
+                            <span style={{ display: "block", fontSize: "0.72rem", color: "#d97706", fontStyle: "italic" }}>
+                              Reason: {item.decision_reason}
+                            </span>
+                          )}
+                        </div>
+
+                        <span
+                          className={`status-badge ${
+                            item.status === "APPROVED"
+                              ? "verified"
+                              : item.status === "PARTIALLY_APPROVED"
+                              ? "under_review"
+                              : item.status === "REJECTED"
+                              ? "rejected"
+                              : "pending"
+                          }`}
+                          style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem", whiteSpace: "nowrap" }}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        )}
+      </section>
 
       {/* MY RELIEF DISTRIBUTION SECTION */}
       <section className="role-section my-relief-distribution" style={{ marginTop: "1.5rem" }}>

@@ -190,6 +190,7 @@ class SupplyInventoryResponse(BaseModel):
     stock_status: str
     centre_name: str | None = None
     centre_district: str | None = None
+    description: str | None = None
 
 
 class DistributionCentreResponse(BaseModel):
@@ -407,3 +408,89 @@ class DistributionTrackingSummaryResponse(BaseModel):
     partial_or_unsuccessful: int
     reported_discrepancies: int
     distributions: list[ReliefDistributionResponse] = []
+
+
+class SupplyInventoryCreate(BaseModel):
+    centre_id: int
+    item_name: str = Field(..., min_length=2, max_length=120)
+    category: str = Field(..., min_length=2, max_length=50)
+    unit: str = Field(..., min_length=1, max_length=30)
+    quantity_available: int = Field(..., ge=0)
+    low_stock_threshold: int = Field(10, ge=1)
+    storage_location: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+
+
+class SupplyInventoryUpdate(BaseModel):
+    item_name: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    quantity_available: int | None = Field(None, ge=0)
+    low_stock_threshold: int | None = Field(None, ge=1)
+    storage_location: str | None = None
+    description: str | None = None
+
+
+class SupplyInventoryRestockRequest(BaseModel):
+    quantity_added: int = Field(..., gt=0)
+    source_notes: str | None = None
+
+
+class SupplyRequestItemInput(BaseModel):
+    inventory_id: int
+    quantity_requested: int = Field(..., gt=0)
+
+
+class SupplyRequestCreate(BaseModel):
+    beneficiary_id: int
+    notes: str | None = None
+    items: list[SupplyRequestItemInput] = Field(..., min_length=1)
+
+
+class SupplyRequestItemReviewInput(BaseModel):
+    item_id: int
+    action: str  # "APPROVE_FULL", "APPROVE_PARTIAL", "REJECT"
+    quantity_approved: int = Field(0, ge=0)
+    reason: str | None = None
+
+
+class SupplyRequestReviewDecision(BaseModel):
+    officer_remarks: str | None = None
+    items: list[SupplyRequestItemReviewInput] = Field(..., min_length=1)
+
+
+class BeneficiarySupplyRequestItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    request_id: int
+    inventory_id: int
+    item_name: str
+    category: str | None = None
+    unit: str
+    quantity_requested: int
+    quantity_approved: int
+    status: str
+    decision_reason: str | None = None
+    allocation_id: int | None = None
+    available_stock: int | None = None
+
+
+class BeneficiarySupplyRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    request_ref: str
+    beneficiary_id: int
+    beneficiary_name: str | None = None
+    application_id: str | None = None
+    district: str | None = None
+    priority_level: str | None = None
+    family_size: int | None = None
+    status: str
+    notes: str | None = None
+    reviewed_by_id: int | None = None
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None = None
+    officer_remarks: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    items: list[BeneficiarySupplyRequestItemResponse] = []

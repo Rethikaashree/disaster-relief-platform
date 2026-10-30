@@ -15,8 +15,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { beneficiaryApi, distributionApi } from "../api";
-import type { Beneficiary, ReliefDistribution, SupplyAllocation } from "../types";
+import { beneficiaryApi, distributionApi, supplyRequestApi } from "../api";
+import type { Beneficiary, ReliefDistribution, SupplyAllocation, BeneficiarySupplyRequest } from "../types";
 
 export function Review() {
   const { beneficiaryId } = useParams();
@@ -33,14 +33,21 @@ export function Review() {
   const [handoverQuantities, setHandoverQuantities] = useState<Record<number, number>>({});
   const [officerNotes, setOfficerNotes] = useState("");
   const [handoverLoading, setHandoverLoading] = useState(false);
+  const [supplyRequests, setSupplyRequests] = useState<BeneficiarySupplyRequest[]>([]);
+  const [reviewDecisions, setReviewDecisions] = useState<
+    Record<number, { action: string; quantity_approved: number; reason: string }>
+  >({});
+  const [reviewRemarks, setReviewRemarks] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const loadBeneficiaryData = async () => {
     try {
-      const [benRes, histRes, allocRes, distRes] = await Promise.all([
+      const [benRes, histRes, allocRes, distRes, reqRes] = await Promise.all([
         beneficiaryApi.get(id),
         beneficiaryApi.history(id),
         distributionApi.allocations(id).catch(() => ({ data: { items: [], total: 0 } })),
         distributionApi.beneficiaryDistributions(id).catch(() => ({ data: { items: [], total: 0 } })),
+        supplyRequestApi.beneficiaryRequests(id).catch(() => ({ data: { items: [], total: 0 } })),
       ]);
       setItem(benRes.data);
       setHistory(histRes.data.records);
@@ -52,6 +59,24 @@ export function Review() {
         initialQtys[a.id] = a.quantity_allocated;
       });
       setHandoverQuantities(initialQtys);
+
+      const reqs = reqRes.data.items || [];
+      setSupplyRequests(reqs);
+      const initialDecisions: Record<number, { action: string; quantity_approved: number; reason: string }> = {};
+      reqs.forEach((r: BeneficiarySupplyRequest) => {
+        if (r.status === "PENDING" || r.status === "PARTIALLY_APPROVED") {
+          r.items.forEach((it) => {
+            if (it.status === "PENDING") {
+              initialDecisions[it.id] = {
+                action: "APPROVE_FULL",
+                quantity_approved: it.quantity_requested,
+                reason: "",
+              };
+            }
+          });
+        }
+      });
+      setReviewDecisions((prev) => ({ ...initialDecisions, ...prev }));
     } catch {
       setError("Unable to load beneficiary details and supply allocations.");
     } finally {
@@ -92,6 +117,69 @@ export function Review() {
       );
     } finally {
       setHandoverLoading(false);
+    }
+  };
+  const handleReviewRequestSubmit = async (requestId: number) => {
+    const targetReq = supplyRequests.find((r) => r.id === requestId);
+    if (!targetReq) return;
+    const pendingItems = targetReq.items.filter((i) => i.status === "PENDING");
+    if (pendingItems.length === 0) return;
+
+    const decisionsPayload = pendingItems.map((item) => {
+      const d = reviewDecisions[item.id] || {
+        action: "APPROVE_FULL",
+        quantity_approved: item.quantity_requested,
+        reason: "",
+      };
+      return {
+        item_id: item.id,
+        action: d.action,
+        quantity_approved:
+          d.action === "APPROVE_FULL"
+            ? item.quantity_requested
+            : d.action === "REJECT"
+            ? 0
+            : Number(d.quantity_approved),
+        reason: d.reason ? d.reason.trim() : undefined,
+      };
+    });
+
+    for (const d of decisionsPayload) {
+      if (d.action === "APPROVE_PARTIAL") {
+        if (!d.quantity_approved || d.quantity_approved <= 0) {
+          setError("Please specify a valid quantity greater than 0 for partially approved items.");
+          return;
+        }
+        if (!d.reason) {
+          setError("Please provide a reason for partial approval.");
+          return;
+        }
+      }
+      if (d.action === "REJECT" && !d.reason) {
+        setError("Please provide a reason for rejecting an item.");
+        return;
+      }
+    }
+
+    setReviewLoading(true);
+    setMessage("");
+    setError("");
+    try {
+      await supplyRequestApi.review(requestId, {
+        items: decisionsPayload,
+        officer_remarks: reviewRemarks || undefined,
+      });
+      setMessage("Supply request reviewed! Approved items are now allocated to the beneficiary.");
+      setReviewRemarks("");
+      await loadBeneficiaryData();
+    } catch (err: any) {
+      setError(
+        typeof err === "object" && err?.response?.data?.detail
+          ? err.response.data.detail
+          : "Failed to process supply request review."
+      );
+    } finally {
+      setReviewLoading(false);
     }
   };
   const decision = async (newStatus: string) => {
@@ -182,39 +270,55 @@ export function Review() {
             </div>
             {item.request_items && item.request_items.length > 0 && (
               <div style={{ marginTop: "1.25rem", borderTop: "1px solid var(--border, #e2e8f0)", paddingTop: "1rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-                  <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>Requested Relief Supplies</h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.85rem" }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600, color: "var(--text, #0f172a)" }}>Requested Relief Supplies</h3>
+                    <span style={{ fontSize: "0.75rem", color: "#64748b" }}>Allocations and requested emergency aid items</span>
+                  </div>
                   <Link
                     to="/distribution"
                     className="secondary-button"
-                    style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "0.35rem 0.75rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                    }}
                   >
-                    <Boxes size={14} /> Manage Distribution
+                    <Boxes size={15} color="#0d9488" /> Manage Distribution
                   </Link>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.5rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.6rem" }}>
                   {item.request_items.map((req) => (
                     <div
                       key={req.id}
                       style={{
-                        padding: "0.6rem 0.75rem",
+                        padding: "0.75rem 0.9rem",
                         background: "var(--bg-subtle, #f8fafc)",
-                        borderRadius: "6px",
+                        borderRadius: "8px",
                         border: "1px solid var(--border, #e2e8f0)",
                         display: "flex",
                         justifyContent: "space-between",
-                        alignItems: "center"
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
                       }}
                     >
-                      <div>
-                        <strong style={{ display: "block", fontSize: "0.85rem" }}>{req.item_name}</strong>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong style={{ display: "block", fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.item_name}</strong>
                         <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                          Needed: {req.quantity_requested} {req.unit} · Allocated: {req.quantity_allocated}
+                          Needed: {req.quantity_requested} {req.unit} · Allocated: <strong style={{ color: req.quantity_allocated > 0 ? "#0f766e" : "#64748b" }}>{req.quantity_allocated}</strong>
                         </span>
                       </div>
                       <span
                         className={`status-badge ${req.status === "FULFILLED" ? "verified" : req.status === "PARTIAL" ? "under_review" : "pending"}`}
-                        style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem" }}
+                        style={{ fontSize: "0.7rem", padding: "0.15rem 0.45rem", whiteSpace: "nowrap", flexShrink: 0 }}
                       >
                         {req.status}
                       </span>
@@ -224,6 +328,240 @@ export function Review() {
               </div>
             )}
           </article>
+
+          
+          {/* BENEFICIARY SUPPLY REQUESTS REVIEW SECTION */}
+          {supplyRequests.length > 0 && (
+            <article className="panel" style={{ marginTop: "1.5rem" }}>
+              <div className="panel-header">
+                <div>
+                  <h2>Beneficiary Supply Requests</h2>
+                  <p>Review requested supplies from this beneficiary, approve or adjust quantities based on available stock.</p>
+                </div>
+                <Boxes size={20} color="#0d9488" />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", marginTop: "1rem" }}>
+                {supplyRequests.map((req) => {
+                  const hasPending = req.items.some((i) => i.status === "PENDING");
+                  return (
+                    <div
+                      key={req.id}
+                      style={{
+                        border: "1px solid var(--border, #cbd5e1)",
+                        borderRadius: "8px",
+                        padding: "1rem",
+                        background: "var(--bg-subtle, #f8fafc)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                        <div>
+                          <strong style={{ fontSize: "0.95rem" }}>Supply Request #{req.id}</strong>
+                          <span style={{ fontSize: "0.8rem", color: "#64748b", marginLeft: "0.75rem" }}>
+                            Submitted on {new Date(req.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <span
+                          className={`status-badge ${
+                            req.status === "APPROVED"
+                              ? "verified"
+                              : req.status === "PARTIALLY_APPROVED"
+                              ? "under_review"
+                              : req.status === "REJECTED"
+                              ? "rejected"
+                              : "pending"
+                          }`}
+                        >
+                          {req.status}
+                        </span>
+                      </div>
+
+                      {req.notes && (
+                        <p style={{ fontSize: "0.85rem", color: "#475569", margin: "0 0 0.75rem 0", fontStyle: "italic" }}>
+                          Beneficiary Note: "{req.notes}"
+                        </p>
+                      )}
+
+                      {/* ITEMS TABLE / LIST */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        {req.items.map((it) => {
+                          const decision = reviewDecisions[it.id] || {
+                            action: "APPROVE_FULL",
+                            quantity_approved: it.quantity_requested,
+                            reason: "",
+                          };
+
+                          return (
+                            <div
+                              key={it.id}
+                              style={{
+                                background: "#ffffff",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "6px",
+                                padding: "0.75rem 1rem",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                                <div>
+                                  <strong style={{ fontSize: "0.9rem" }}>{it.item_name}</strong>
+                                  <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.15rem" }}>
+                                    Requested: <strong>{it.quantity_requested} {it.unit}</strong> · Current In-Stock: <strong>{it.available_stock ?? "N/A"} {it.unit}</strong>
+                                  </div>
+                                </div>
+                                <span
+                                  className={`status-badge ${
+                                    it.status === "APPROVED"
+                                      ? "verified"
+                                      : it.status === "PARTIALLY_APPROVED"
+                                      ? "under_review"
+                                      : it.status === "REJECTED"
+                                      ? "rejected"
+                                      : "pending"
+                                  }`}
+                                  style={{ fontSize: "0.75rem" }}
+                                >
+                                  {it.status} {it.quantity_approved > 0 ? `(${it.quantity_approved} ${it.unit})` : ""}
+                                </span>
+                              </div>
+
+                              {it.decision_reason && (
+                                <p style={{ fontSize: "0.8rem", color: "#0f766e", margin: "0.4rem 0 0 0" }}>
+                                  Officer reason: {it.decision_reason}
+                                </p>
+                              )}
+
+                              {it.status === "PENDING" && (
+                                <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px dashed #e2e8f0" }}>
+                                  <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                                      <input
+                                        type="radio"
+                                        name={`action_${it.id}`}
+                                        value="APPROVE_FULL"
+                                        checked={decision.action === "APPROVE_FULL"}
+                                        onChange={() =>
+                                          setReviewDecisions((prev) => ({
+                                            ...prev,
+                                            [it.id]: { action: "APPROVE_FULL", quantity_approved: it.quantity_requested, reason: "" },
+                                          }))
+                                        }
+                                      />
+                                      Approve Full ({it.quantity_requested} {it.unit})
+                                    </label>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                                      <input
+                                        type="radio"
+                                        name={`action_${it.id}`}
+                                        value="APPROVE_PARTIAL"
+                                        checked={decision.action === "APPROVE_PARTIAL"}
+                                        onChange={() =>
+                                          setReviewDecisions((prev) => ({
+                                            ...prev,
+                                            [it.id]: { action: "APPROVE_PARTIAL", quantity_approved: Math.min(1, it.quantity_requested), reason: "" },
+                                          }))
+                                        }
+                                      />
+                                      Approve Smaller Qty
+                                    </label>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                                      <input
+                                        type="radio"
+                                        name={`action_${it.id}`}
+                                        value="REJECT"
+                                        checked={decision.action === "REJECT"}
+                                        onChange={() =>
+                                          setReviewDecisions((prev) => ({
+                                            ...prev,
+                                            [it.id]: { action: "REJECT", quantity_approved: 0, reason: "" },
+                                          }))
+                                        }
+                                      />
+                                      Reject Item
+                                    </label>
+                                  </div>
+
+                                  {decision.action === "APPROVE_PARTIAL" && (
+                                    <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                                      <label style={{ fontSize: "0.8rem", color: "#334155" }}>
+                                        Approved Qty:
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={it.quantity_requested}
+                                          value={decision.quantity_approved}
+                                          onChange={(e) =>
+                                            setReviewDecisions((prev) => ({
+                                              ...prev,
+                                              [it.id]: { ...decision, quantity_approved: Number(e.target.value) },
+                                            }))
+                                          }
+                                          style={{ width: "90px", marginLeft: "0.5rem", padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                                        />
+                                      </label>
+                                      <input
+                                        type="text"
+                                        placeholder="Reason for partial approval (e.g. limited stock)..."
+                                        value={decision.reason}
+                                        onChange={(e) =>
+                                          setReviewDecisions((prev) => ({
+                                            ...prev,
+                                            [it.id]: { ...decision, reason: e.target.value },
+                                          }))
+                                        }
+                                        style={{ flex: 1, minWidth: "220px", padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8rem" }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {decision.action === "REJECT" && (
+                                    <div style={{ marginTop: "0.5rem" }}>
+                                      <input
+                                        type="text"
+                                        placeholder="Reason for rejection (e.g. item out of stock / already supplied)..."
+                                        value={decision.reason}
+                                        onChange={(e) =>
+                                          setReviewDecisions((prev) => ({
+                                            ...prev,
+                                            [it.id]: { ...decision, reason: e.target.value },
+                                          }))
+                                        }
+                                        style={{ width: "100%", padding: "0.25rem 0.5rem", borderRadius: "4px", border: "1px solid #cbd5e1", fontSize: "0.8rem" }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {hasPending && (
+                        <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.75rem" }}>
+                          <input
+                            type="text"
+                            placeholder="Overall officer remarks (optional)..."
+                            value={reviewRemarks}
+                            onChange={(e) => setReviewRemarks(e.target.value)}
+                            style={{ flex: 1, maxWidth: "350px", padding: "0.35rem 0.6rem", fontSize: "0.8rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                          />
+                          <button
+                            type="button"
+                            className="primary-button"
+                            disabled={reviewLoading}
+                            onClick={() => handleReviewRequestSubmit(req.id)}
+                            style={{ padding: "0.4rem 1rem", fontSize: "0.85rem" }}
+                          >
+                            {reviewLoading ? "Confirming..." : "Confirm Request Decisions"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          )}
 
           {/* RELIEF SUPPLY DISTRIBUTION & RECEIPT CONFIRMATION PANEL */}
           <article className="panel distribution-handover-panel" style={{ marginTop: "1.5rem" }}>
